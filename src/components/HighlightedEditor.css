@@ -1,0 +1,56 @@
+.highlighted-editor {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+}
+
+.highlight-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  padding: 14px 16px;
+  z-index: 1;
+}
+
+.highlight-pre {
+  font-family: var(--mono);
+  font-size: var(--editor-font-size, 13px);
+  line-height: var(--editor-line-height, 1.65);
+  margin: 0;
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
+  tab-size: var(--editor-tab-size, 4);
+  /* Match textarea exactly */
+  letter-spacing: 0;
+}
+
+.highlight-textarea {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--accent);
+  border: none;
+  outline: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 14px 16px;
+  resize: none;
+  overflow: auto;
+  white-space: pre;
+  tab-size: 4;
+  letter-spacing: 0;
+  /* Selection must still be visible */
+  -webkit-text-fill-color: transparent;
+}
+
+/* Show selection highlight */
+.highlight-textarea::selection {
+  background: rgba(124, 106, 247, 0.3);
+  -webkit-text-fill-color: transparent;
+}

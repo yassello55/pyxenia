@@ -1,0 +1,51 @@
+.app-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* Split layout: project view + chat side panel */
+.app-main--split {
+  flex-direction: row;
+}
+
+.app-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-chat-panel {
+  /* width is set inline (dynamic) */
+  min-width: 280px;
+  max-width: 700px;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-resize-handle {
+  width: 4px;
+  flex-shrink: 0;
+  background: transparent;
+  border-left: 1px solid var(--border);
+  cursor: col-resize;
+  transition: background 0.15s;
+  position: relative;
+  z-index: 1;
+}
+.chat-resize-handle:hover,
+.chat-resize-handle:active {
+  background: var(--accent);
+  border-color: var(--accent);
+}
