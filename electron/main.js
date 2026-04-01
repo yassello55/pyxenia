@@ -625,6 +625,34 @@ ipcMain.handle('uninstall-package', (_, { projectId, packageName }) => {
   });
 });
 
+// Maps Python import name → pip install name for packages where they differ
+const IMPORT_TO_PIP = {
+  fitz: 'pymupdf',
+  cv2: 'opencv-python',
+  PIL: 'Pillow',
+  sklearn: 'scikit-learn',
+  bs4: 'beautifulsoup4',
+  yaml: 'pyyaml',
+  serial: 'pyserial',
+  usb: 'pyusb',
+  Crypto: 'pycryptodome',
+  OpenSSL: 'pyOpenSSL',
+  gi: 'PyGObject',
+  wx: 'wxPython',
+  dateutil: 'python-dateutil',
+  dotenv: 'python-dotenv',
+  magic: 'python-magic',
+  docx: 'python-docx',
+  pptx: 'python-pptx',
+  discord: 'discord.py',
+  jwt: 'PyJWT',
+  apscheduler: 'APScheduler',
+  pkg_resources: 'setuptools',
+  skimage: 'scikit-image',
+  attr: 'attrs',
+  boto3: 'boto3',
+};
+
 ipcMain.handle('detect-imports', (_, code) => {
   const lines = code.split('\n');
   const imports = new Set();
@@ -648,7 +676,7 @@ ipcMain.handle('detect-imports', (_, code) => {
     const pkg = (m1 || m2)?.[1]?.split('.')[0];
     if (pkg && !builtins.has(pkg) && !pkg.startsWith('_')) imports.add(pkg);
   }
-  return [...imports];
+  return [...imports].map(pkg => IMPORT_TO_PIP[pkg] || pkg);
 });
 
 ipcMain.handle('open-project-folder', (_, projectId) => {
