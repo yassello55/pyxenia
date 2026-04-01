@@ -2,6 +2,7 @@
   "name": "pyxenia",
   "version": "0.1.0",
   "description": "Run Python scripts without a code editor — for everyone.",
+  "author": "Pyxenia",
   "main": "electron/main.js",
   "homepage": "./",
   "scripts": {
@@ -10,7 +11,8 @@
     "electron-start": "wait-on http://localhost:3000 && electron .",
     "dev": "concurrently \"npm run react-start\" \"npm run electron-start\"",
     "build": "npm run react-build && electron-builder",
-    "pack": "electron-builder --dir"
+    "pack": "electron-builder --dir",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -26,11 +28,17 @@
     "concurrently": "^8.2.0",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
     "wait-on": "^7.2.0"
   },
   "build": {
     "appId": "com.pyxenia.app",
     "productName": "Pyxenia",
+    "icon": "assets/icon",
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
     "files": [
       "build/**/*",
       "electron/**/*"
@@ -39,13 +47,16 @@
       "output": "dist"
     },
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "assets/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/icon.ico"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "assets/icon.png"
     }
   },
   "browserslist": {
