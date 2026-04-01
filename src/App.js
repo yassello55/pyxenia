@@ -183,11 +183,11 @@ export default function App() {
                   <WelcomeScreen onCreateProject={handleCreateProject} />
                 )}
               </div>
-              {/* Resizable chat panel */}
-              {showChat && activeProject && (
+              {/* Resizable chat panel — always mounted when a project is open so conversation history is preserved */}
+              {activeProject && (
                 <>
-                  <div className="chat-resize-handle" onMouseDown={handleChatResizeStart} />
-                  <div className="app-chat-panel" style={{ width: chatWidth }}>
+                  <div className="chat-resize-handle" onMouseDown={handleChatResizeStart} style={{ display: showChat ? '' : 'none' }} />
+                  <div className="app-chat-panel" style={{ width: chatWidth, display: showChat ? '' : 'none' }}>
                     <ChatPanel
                       onClose={() => setShowChat(false)}
                       activeProject={activeProject}
