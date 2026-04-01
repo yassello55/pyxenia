@@ -49,11 +49,11 @@ function summarizeConsoleErrors(output) {
   return errorBlock.trim();
 }
 
-export default function ScriptEditor({ script, project, onSave, showChat, onToggleChat, onDebugWithAI, onCodeLoad }) {
+export default function ScriptEditor({ script, project, onSave, showChat, onToggleChat, onDebugWithAI, onCodeLoad, onRunningChange, projectHasRunningScript, isRunning: initialRunning, initialCache, onCacheUpdate }) {
   const { settings } = useContext(SettingsContext);
   const [code, setCode] = useState('');
-  const [output, setOutput] = useState([]);
-  const [running, setRunning] = useState(false);
+  const [output, setOutput] = useState(initialCache?.output || []);
+  const [running, setRunning] = useState(initialRunning || false);
   const [saved, setSaved] = useState(true);
   const [inputFile, setInputFile] = useState(null);
   const [showInputWarning, setShowInputWarning] = useState(false);
@@ -69,14 +69,41 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
 
   const [showEnvManager, setShowEnvManager] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [runHistory, setRunHistory] = useState([]);
+  const [runHistory, setRunHistory] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`pyxenia-run-history-${script.id}`);
+      return stored ? JSON.parse(stored) : (initialCache?.runHistory || []);
+    } catch { return initialCache?.runHistory || []; }
+  });
   const [draggingOver, setDraggingOver] = useState(false);
   const [outputTab, setOutputTab] = useState('console');
-  const [scriptFiles, setScriptFiles] = useState([]);
+  const [scriptFiles, setScriptFiles] = useState(initialCache?.scriptFiles || []);
   const [previewFile, setPreviewFile] = useState(null);
   const [showMissingDepsWarning, setShowMissingDepsWarning] = useState(false);
   const [missingDepNames, setMissingDepNames] = useState([]);
-  const [lastExitCode, setLastExitCode] = useState(null);
+  const [lastExitCode, setLastExitCode] = useState(initialCache?.lastExitCode ?? null);
+
+  // Refs to always hold latest values for cache-on-unmount (avoids stale closure)
+  const outputRef      = useRef(output);
+  const scriptFilesRef = useRef(scriptFiles);
+  const lastExitCodeRef= useRef(lastExitCode);
+  const runHistoryRef  = useRef(runHistory);
+  useEffect(() => { outputRef.current      = output;      }, [output]);
+  useEffect(() => { scriptFilesRef.current = scriptFiles; }, [scriptFiles]);
+  useEffect(() => { lastExitCodeRef.current= lastExitCode;}, [lastExitCode]);
+  useEffect(() => { runHistoryRef.current  = runHistory;  }, [runHistory]);
+
+  // Save state to parent cache when unmounting so it survives script switches
+  useEffect(() => {
+    return () => {
+      onCacheUpdate?.({
+        output:      outputRef.current,
+        scriptFiles: scriptFilesRef.current,
+        lastExitCode:lastExitCodeRef.current,
+        runHistory:  runHistoryRef.current,
+      });
+    };
+  }, []);
 
   // ── Resizable split ────────────────────────────────────────────────────────
   const [editorHeightPct, setEditorHeightPct] = useState(60); // % of available height
@@ -115,6 +142,25 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   const currentOutputRef = useRef([]);
   const api = window.pyxenia;
 
+  // Persist run history to localStorage on every change (survives project switches)
+  useEffect(() => {
+    try {
+      // Cap at 30 runs, trim each output to 300 lines to stay within storage limits
+      const capped = runHistory.slice(-30).map(r => ({
+        ...r,
+        output: r.output?.slice(-300),
+      }));
+      localStorage.setItem(`pyxenia-run-history-${script.id}`, JSON.stringify(capped));
+    } catch {}
+  }, [runHistory]);
+
+  // Load output files from disk on mount so they survive project switches
+  useEffect(() => {
+    api.listScriptFiles({ projectId: project.id, scriptId: script.id }).then(files => {
+      if (files?.length) setScriptFiles(files);
+    });
+  }, [script.id]);
+
   // Load code
   useEffect(() => {
     api.readScript(script.filePath).then(c => {
@@ -134,6 +180,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     const handleDone = ({ scriptId, code: exitCode }) => {
       if (scriptId !== script.id) return;
       setRunning(false);
+      onRunningChange?.(false, exitCode);
       setLastExitCode(exitCode);
       const exitLine = {
         text: `\n─── Exited with code ${exitCode} ───\n`,
@@ -227,6 +274,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     currentOutputRef.current = [];
     setLastExitCode(null);
     setRunning(true);
+    onRunningChange?.(true, null);
     setShowHistory(false);
     await api.runScript({ projectId: project.id, scriptId: script.id, inputFile });
   };
@@ -240,7 +288,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     }
   };
 
-  const handleStop = () => { api.stopScript(script.id); setRunning(false); };
+  const handleStop = () => { api.stopScript(script.id); setRunning(false); onRunningChange?.(false, null); };
 
   const handlePickInput = async () => {
     const p = await api.pickInputFile();
@@ -332,7 +380,12 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
           <button className="toolbar-btn" onClick={handlePickInput} title="Attach input file">
             <FileInput size={14} /> Input file
           </button>
-          <button className="toolbar-btn" onClick={() => setShowEnvManager(true)} title="Manage packages">
+          <button
+            className="toolbar-btn"
+            onClick={() => setShowEnvManager(true)}
+            title={projectHasRunningScript ? 'Cannot manage packages while a script is running' : 'Manage packages'}
+            disabled={projectHasRunningScript}
+          >
             <Package size={14} /> Packages
           </button>
           <button className="toolbar-btn" onClick={handleDetect} title="Auto-detect imports" disabled={detecting}>

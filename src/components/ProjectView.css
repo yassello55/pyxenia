@@ -223,6 +223,16 @@
   text-align: center;
 }
 
+.script-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.script-status-dot.running { background: var(--green); animation: pulse 1s infinite; }
+.script-status-dot.done    { background: var(--green); }
+.script-status-dot.error   { background: var(--red); }
+
 .script-rename-input {
   background: var(--bg);
   border: 1px solid var(--accent);

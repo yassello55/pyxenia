@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Upload, FileCode2, Trash2, ChevronRight } from 'lucide-react';
 import ScriptEditor from './ScriptEditor';
 import './ProjectView.css';
@@ -6,11 +6,36 @@ import './ProjectView.css';
 export default function ProjectView({ project, onProjectUpdate, showChat, onToggleChat, onActiveScriptChange, onDebugWithAI }) {
   const [scripts, setScripts] = useState([]);
   const [activeScriptId, setActiveScriptId] = useState(null);
+  const [scriptStatuses, setScriptStatuses] = useState({}); // { [scriptId]: 'idle'|'running'|'done'|'error' }
+
+  const handleRunningChange = useCallback((scriptId, isRunning, exitCode) => {
+    setScriptStatuses(prev => ({
+      ...prev,
+      [scriptId]: isRunning ? 'running' : exitCode === null ? 'idle' : exitCode === 0 ? 'done' : 'error',
+    }));
+  }, []);
+
+  const anyRunning = Object.values(scriptStatuses).some(s => s === 'running');
+
+  // Persists output/files/history across script switches without re-rendering ProjectView
+  const scriptCacheRef = useRef({});
+
   const [showNewScript, setShowNewScript] = useState(false);
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
   const api = window.pyxenia;
+
+  // Global script event listeners — update statuses even when the ScriptEditor is not mounted
+  useEffect(() => {
+    const unsubDone = api.onScriptDone(({ scriptId, code }) => {
+      setScriptStatuses(prev => {
+        if (prev[scriptId] !== 'running') return prev;
+        return { ...prev, [scriptId]: code === 0 ? 'done' : 'error' };
+      });
+    });
+    return () => unsubDone();
+  }, []);
 
   // ✅ Fix: re-sync scripts whenever project changes (fixes disappearing scripts bug)
   useEffect(() => {
@@ -163,13 +188,18 @@ export default function ProjectView({ project, onProjectUpdate, showChat, onTogg
                 <div>Create one or import a .py file.</div>
               </div>
             )}
-            {scripts.map(s => (
+            {scripts.map(s => {
+              const status = scriptStatuses[s.id];
+              return (
               <div
                 key={s.id}
                 className={`script-item ${s.id === activeScriptId ? 'active' : ''}`}
                 onClick={() => setActiveScriptId(s.id)}
               >
                 <FileCode2 size={13} style={{ flexShrink: 0, color: s.id === activeScriptId ? 'var(--accent)' : 'var(--text3)' }} />
+                {status && status !== 'idle' && (
+                  <span className={`script-status-dot ${status}`} title={status === 'running' ? 'Running…' : status === 'done' ? 'Completed' : 'Failed'} />
+                )}
                 {renamingId === s.id ? (
                   <input
                     className="script-rename-input"
@@ -198,7 +228,8 @@ export default function ProjectView({ project, onProjectUpdate, showChat, onTogg
                   <Trash2 size={11} />
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -214,6 +245,11 @@ export default function ProjectView({ project, onProjectUpdate, showChat, onTogg
               onToggleChat={onToggleChat}
               onDebugWithAI={(summary) => onDebugWithAI?.(summary, activeScript, project)}
               onCodeLoad={handleScriptCodeLoad}
+              isRunning={scriptStatuses[activeScript.id] === 'running'}
+              onRunningChange={(isRunning, exitCode) => handleRunningChange(activeScript.id, isRunning, exitCode)}
+              projectHasRunningScript={anyRunning}
+              initialCache={scriptCacheRef.current[activeScript.id] || null}
+              onCacheUpdate={data => { scriptCacheRef.current[activeScript.id] = data; }}
             />
           ) : (
             <div className="no-script-selected">
