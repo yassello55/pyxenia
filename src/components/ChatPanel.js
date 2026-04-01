@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
-import { MessageSquare, X, Trash2, Send, Square, ChevronDown, ChevronRight, Loader, Check, AlertCircle, Bot, Paperclip, FileText, Image, Sheet, FileJson } from 'lucide-react';
+import { MessageSquare, X, Trash2, Send, Square, ChevronDown, ChevronRight, Loader, Check, AlertCircle, Bot, Paperclip, FileText, Image, Sheet, FileJson, Copy } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { SettingsContext } from '../App';
 import { BUILTIN_PROVIDERS, getProviderConfig } from '../llmConfig';
@@ -7,12 +7,35 @@ import './ChatPanel.css';
 
 const CHAT_ID = 'main'; // single persistent chat session per window
 
+// ─── Code block with copy button ─────────────────────────────────────────────
+function CodeBlock({ lang, code }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="chat-code-block">
+      <div className="chat-code-header">
+        <span className="chat-code-lang">{lang || 'code'}</span>
+        <button className="chat-code-copy" onClick={handleCopy} title="Copy code">
+          {copied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy</>}
+        </button>
+      </div>
+      <pre><code>{code}</code></pre>
+    </div>
+  );
+}
+
 // ─── Markdown-light renderer (code blocks + bold) ─────────────────────────────
 function renderContent(text) {
   if (!text) return null;
 
   const parts = [];
-  // Split on ```...``` blocks
   const codeBlockRe = /```(\w*)\n?([\s\S]*?)```/g;
   let lastIdx = 0;
   let match;
@@ -21,9 +44,7 @@ function renderContent(text) {
     if (match.index > lastIdx) {
       parts.push(<InlineText key={lastIdx} text={text.slice(lastIdx, match.index)} />);
     }
-    parts.push(
-      <pre key={match.index}><code>{match[2]}</code></pre>
-    );
+    parts.push(<CodeBlock key={match.index} lang={match[1]} code={match[2].trimEnd()} />);
     lastIdx = match.index + match[0].length;
   }
   if (lastIdx < text.length) {
@@ -143,6 +164,8 @@ export default function ChatPanel({ onClose, activeProject, activeScript, active
   const [input, setInput] = useState('');
   const [pendingAttachment, setPendingAttachment] = useState(null);
   const bottomRef = useRef(null);
+  const chatMessagesRef = useRef(null);
+  const userScrolledUp = useRef(false);
   const textareaRef = useRef(null);
   const api = window.pyxenia;
 
@@ -161,10 +184,19 @@ export default function ChatPanel({ onClose, activeProject, activeScript, active
     setModel(defaultModel);
   }, [provider]);
 
-  // Scroll to bottom on new messages
+  // Scroll to bottom on new messages, unless user has scrolled up to read
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!userScrolledUp.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages]);
+
+  const handleChatScroll = () => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    userScrolledUp.current = !atBottom;
+  };
 
   // Pre-fill input when a debug message comes in
   useEffect(() => {
@@ -196,6 +228,7 @@ export default function ChatPanel({ onClose, activeProject, activeScript, active
     const attachment = pendingAttachment;
     setInput('');
     setPendingAttachment(null);
+    userScrolledUp.current = false;
     textareaRef.current?.style && (textareaRef.current.style.height = 'auto');
 
     const context = {
@@ -300,7 +333,7 @@ export default function ChatPanel({ onClose, activeProject, activeScript, active
       )}
 
       {/* Messages */}
-      <div className="chat-messages">
+      <div className="chat-messages" ref={chatMessagesRef} onScroll={handleChatScroll}>
         {messages.length === 0 ? (
           <div className="chat-empty">
             <Bot size={32} style={{ color: 'var(--accent)', opacity: 0.6 }} />

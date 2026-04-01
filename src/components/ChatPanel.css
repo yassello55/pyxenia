@@ -186,6 +186,52 @@
   padding: 0;
 }
 
+.chat-code-block {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.chat-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: var(--bg4);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-code-lang {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: lowercase;
+}
+
+.chat-code-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 11px;
+  color: var(--text3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.chat-code-copy:hover { background: var(--bg3); color: var(--text2); }
+.chat-code-copy:active { color: var(--green); }
+
+.chat-code-block pre {
+  margin: 0;
+  border: none;
+  border-radius: 0;
+}
+
 /* Streaming cursor */
 .stream-cursor {
   display: inline-block;
