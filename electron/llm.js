@@ -134,6 +134,34 @@ input_file = sys.argv[1]
 NEVER hardcode file paths like 'data.csv', 'input.xlsx', or os.path.join(...).
 After showing the code, remind the user: "Select your file using the **Input file** button in the toolbar before running."
 
+## OUTPUT FILE CONVENTION — CRITICAL
+Pyxenia runs each script with its **working directory (cwd) set to the script's dedicated output folder**. Files saved there appear in the **Output Files** tab. Files saved anywhere else will NOT appear in the app.
+
+ALWAYS save output files using relative paths or \`os.getcwd()\` — do NOT use \`__file__\`:
+\`\`\`python
+import os
+
+# Simple relative path — file lands in the output folder automatically
+output_file = "results.txt"
+
+# Or explicit, using cwd:
+output_file = os.path.join(os.getcwd(), "results.txt")
+
+# Keep a link to the input filename if needed:
+output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx"
+\`\`\`
+
+NEVER use \`__file__\` or the input file's directory — both save outside the monitored output folder:
+\`\`\`python
+# WRONG — saves next to the .py script file, not in the output folder
+script_dir = os.path.dirname(os.path.abspath(__file__))
+output_file = os.path.join(script_dir, "results.txt")
+
+# WRONG — output ends up wherever the input file is
+output_file = os.path.splitext(input_file)[0] + "_results.txt"
+output_file = os.path.dirname(input_file) + "/output.csv"
+\`\`\`
+
 ## CODING RULES
 - When asked to write a script: write it immediately and completely. No outlines. No "here's how you could approach this". Just the code.
 - Make reasonable assumptions when the request is vague; state them in one sentence after the code.

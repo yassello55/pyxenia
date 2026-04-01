@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import {
-  Play, Square, Save, Package, FileInput, History,
+  Play, Square, Save, Package, FileInput, FolderOutput, History,
   CheckCircle2, Loader, Search, Info, FolderOpen, Download, Terminal, Files, Eye, MessageSquare, Bug
 } from 'lucide-react';
 import EnvManager from './EnvManager';
@@ -57,6 +57,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   const [saved, setSaved] = useState(true);
   const [inputFile, setInputFile] = useState(null);
   const [showInputWarning, setShowInputWarning] = useState(false);
+  const [showOutputWarning, setShowOutputWarning] = useState(false);
 
   // Install panel
   const [detectedPkgs, setDetectedPkgs] = useState([]);
@@ -268,7 +269,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
 
-  const doRun = async () => {
+  const doRun = async (inputFileOverride) => {
     await handleSave();
     setOutput([]);
     currentOutputRef.current = [];
@@ -276,15 +277,35 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     setRunning(true);
     onRunningChange?.(true, null);
     setShowHistory(false);
-    await api.runScript({ projectId: project.id, scriptId: script.id, inputFile });
+    await api.runScript({ projectId: project.id, scriptId: script.id, inputFile: inputFileOverride ?? inputFile });
   };
 
-  const handleRun = () => {
+  // Step 2: check input file, then run
+  const proceedToInputCheck = () => {
     const needsFile = /sys\.argv\s*\[/.test(code);
     if (needsFile && !inputFile) {
       setShowInputWarning(true);
     } else {
       doRun();
+    }
+  };
+
+  // Step 1: check if output files will be saved outside the app folder
+  const handleRun = () => {
+    // Risky: input file's *directory* is used as the output location
+    // Safe: only the *basename* (filename) is extracted from input_file — directory is not preserved
+    const riskyOutput = (
+      // dirname(input_file) — explicitly saves to input file's directory
+      /os\.path\.dirname\s*\(.*(?:input_file|sys\.argv)/.test(code) ||
+      // splitext applied directly to input path (not wrapped in basename) — full path including dir
+      /os\.path\.splitext\s*\(\s*(?:input_file|sys\.argv\s*\[\s*1\s*\])/.test(code) ||
+      // direct string ops on input_file that preserve the path (slice, replace, rsplit on the full path)
+      /(?:input_file|sys\.argv\s*\[\s*1\s*\])\s*(?:\[:-?\d+\]|\.replace\s*\(|\.rsplit\s*\()/.test(code)
+    );
+    if (riskyOutput) {
+      setShowOutputWarning(true);
+    } else {
+      proceedToInputCheck();
     }
   };
 
@@ -664,6 +685,32 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         </div>
       )}
 
+      {/* Output path warning modal */}
+      {showOutputWarning && (
+        <div className="modal-overlay" onClick={() => setShowOutputWarning(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-icon"><FolderOutput size={22} /></div>
+            <div className="modal-title">Output file may be saved outside Pyxenia</div>
+            <div className="modal-body">
+              Your script saves output files using the input file's path as a base. Those files won't appear in the <strong>Output Files</strong> tab.<br /><br />
+              Use a relative path instead — Pyxenia runs scripts with the output folder as the working directory:<br />
+              <code>output_file = "results.xlsx"</code><br />
+              or: <code>output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx"</code>
+            </div>
+            <div className="modal-actions">
+              {onDebugWithAI && (
+                <button className="btn-primary" onClick={() => {
+                  setShowOutputWarning(false);
+                  onDebugWithAI(`My script saves output files using the input file path as a base (e.g. \`os.path.splitext(input_file)[0] + "_results.txt"\`). This saves files outside Pyxenia's output folder so they don't appear in the Output Files tab. Pyxenia sets the working directory (cwd) to the script's output folder at runtime, so output files should use plain relative paths like \`output_file = "results.xlsx"\` or \`output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx"\`. Do NOT use \`__file__\` or \`os.path.dirname(input_file)\`. Please fix the script accordingly.`);
+                }}>AI Assistant</button>
+              )}
+              <button className="btn-ghost" onClick={() => { setShowOutputWarning(false); proceedToInputCheck(); }}>Run anyway</button>
+              <button className="btn-ghost" onClick={() => setShowOutputWarning(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Input file warning modal */}
       {showInputWarning && (
         <div className="modal-overlay" onClick={() => setShowInputWarning(false)}>
@@ -677,7 +724,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
               <button className="btn-primary" onClick={async () => {
                 setShowInputWarning(false);
                 const p = await api.pickInputFile();
-                if (p) { setInputFile(p); await doRun(); }
+                if (p) { setInputFile(p); await doRun(p); }
               }}>Select a file</button>
               <button className="btn-ghost" onClick={() => { setShowInputWarning(false); doRun(); }}>Run anyway</button>
               <button className="btn-ghost" onClick={() => setShowInputWarning(false)}>Cancel</button>
