@@ -117,10 +117,9 @@ This means:
 When a user asks for a script they can "run right now" or a "test script" with no other context, write something fun and instantly runnable that requires NO external files, NO third-party packages, and NO user interaction. Use only Python stdlib. Good examples: a prime number finder, a Fibonacci generator, a password strength checker on hardcoded examples, a simple stats calculator on generated random data, a word frequency counter on hardcoded text, a Caesar cipher encoder. State that it uses only stdlib and runs without any input.
 
 ## INPUT FILE CONVENTION — CRITICAL
-Pyxenia passes external files (CSV, Excel, JSON, images, etc.) to scripts via **sys.argv[1]**, not hardcoded paths.
-The user selects the file in the Pyxenia UI (the "Input file" selector), and the app passes its path as the first argument.
+\`sys.argv[1]\` is ONLY for scripts that need the user to **supply an external data file** (CSV, Excel, JSON, image, etc.) via the "Input file" selector in the UI.
 
-ALWAYS use this pattern when a script needs to read an external file:
+ONLY use this pattern when the script genuinely needs to READ a user-supplied file:
 \`\`\`python
 import sys, os
 
@@ -131,35 +130,37 @@ if len(sys.argv) < 2:
 input_file = sys.argv[1]
 \`\`\`
 
+If a script fetches data from an API, generates data internally, or has no external file dependency — do NOT add sys.argv at all. Adding it forces the user to select an unnecessary file.
+
 NEVER hardcode file paths like 'data.csv', 'input.xlsx', or os.path.join(...).
-After showing the code, remind the user: "Select your file using the **Input file** button in the toolbar before running."
+After showing code that uses sys.argv[1], remind the user: "Select your file using the **Input file** button in the toolbar before running."
 
 ## OUTPUT FILE CONVENTION — CRITICAL
 Pyxenia runs each script with its **working directory (cwd) set to the script's dedicated output folder**. Files saved there appear in the **Output Files** tab. Files saved anywhere else will NOT appear in the app.
 
-ALWAYS save output files using relative paths or \`os.getcwd()\` — do NOT use \`__file__\`:
+ALWAYS save output files using plain relative filenames — the cwd is already set correctly:
 \`\`\`python
-import os
+# Correct — just use a plain filename, it saves to the output folder automatically
+with open('results.txt', 'w', encoding='utf-8') as f: ...
 
-# Simple relative path — file lands in the output folder automatically
-output_file = "results.txt"
-
-# Or explicit, using cwd:
-output_file = os.path.join(os.getcwd(), "results.txt")
-
-# Keep a link to the input filename if needed:
-output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx"
+output_file = "results.xlsx"   # relative path, lands in the right place
 \`\`\`
 
-NEVER use \`__file__\` or the input file's directory — both save outside the monitored output folder:
+NEVER derive the output path from sys.argv, input_file, or __file__:
 \`\`\`python
+# WRONG — sys.argv[1] is the INPUT file path, not the output location
+output_file = sys.argv[1]
+
 # WRONG — saves next to the .py script file, not in the output folder
 script_dir = os.path.dirname(os.path.abspath(__file__))
-output_file = os.path.join(script_dir, "results.txt")
 
-# WRONG — output ends up wherever the input file is
+# WRONG — output ends up wherever the input file is, outside the app
 output_file = os.path.splitext(input_file)[0] + "_results.txt"
-output_file = os.path.dirname(input_file) + "/output.csv"
+\`\`\`
+
+When the script has an input file AND saves output, derive only the **filename** (not the path) from input_file:
+\`\`\`python
+output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx"
 \`\`\`
 
 ## CODING RULES
@@ -170,6 +171,7 @@ output_file = os.path.dirname(input_file) + "/output.csv"
 - When a script needs external libraries, add a comment at the top: # pip install <package>
 - Never ask the user to paste code — use the read_script tool to read it directly.
 - Do not add unsolicited warnings, disclaimers, or "best practices" lectures.
+- ALWAYS open files with explicit UTF-8 encoding to avoid Windows encoding errors: open('file.txt', 'w', encoding='utf-8') and open('file.txt', 'r', encoding='utf-8')
 
 ## OUTPUT FORMAT
 - Use triple-backtick python code blocks for all code.
@@ -319,7 +321,11 @@ async function runClaude({ apiKey, model, system, messages, onToken, onToolStart
       let rawInput = {};
       try { rawInput = JSON.parse(tu.input_json || '{}'); } catch {}
       const toolInput = validateToolInput(tu.name, rawInput);
-      if (!toolInput) { onToolDone(tu.name, { error: 'Invalid tool input' }); continue; }
+      if (!toolInput) {
+        onToolDone(tu.name, { error: 'Invalid tool input' });
+        toolResultContents.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: 'Invalid tool input' }) });
+        continue;
+      }
       onToolStart(tu.name, toolInput);
       const result = await executeTool(tu.name, toolInput);
       onToolDone(tu.name, result);
@@ -403,7 +409,11 @@ async function runOpenAI({ apiKey, model, system, messages, onToken, onToolStart
         let rawInput = {};
         try { rawInput = JSON.parse(tc.arguments || '{}'); } catch {}
         const toolInput = validateToolInput(tc.name, rawInput);
-        if (!toolInput) { onToolDone(tc.name, { error: 'Invalid tool input' }); continue; }
+        if (!toolInput) {
+          onToolDone(tc.name, { error: 'Invalid tool input' });
+          oaiMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify({ error: 'Invalid tool input' }) });
+          continue;
+        }
         onToolStart(tc.name, toolInput);
         const result = await executeTool(tc.name, toolInput);
         onToolDone(tc.name, result);
@@ -463,7 +473,11 @@ async function runGemini({ apiKey, model, system, messages, onToken, onToolStart
       for (const part of fnCalls) {
         const { name, args } = part.functionCall;
         const toolInput = validateToolInput(name, args || {});
-        if (!toolInput) { onToolDone(name, { error: 'Invalid tool input' }); continue; }
+        if (!toolInput) {
+          onToolDone(name, { error: 'Invalid tool input' });
+          responseParts.push({ functionResponse: { name, response: { result: JSON.stringify({ error: 'Invalid tool input' }) } } });
+          continue;
+        }
         onToolStart(name, toolInput);
         const toolResult = await executeTool(name, toolInput);
         onToolDone(name, toolResult);
