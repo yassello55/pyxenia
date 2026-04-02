@@ -43,6 +43,51 @@ if (fs.existsSync(OLD_DATA_DIR) && !fs.existsSync(DATA_DIR)) {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 });
 
+// Runner script written to DATA_DIR — wraps user scripts to handle locked-file conflicts
+const RUNNER_PATH = path.join(DATA_DIR, 'pyxenia_runner.py');
+const RUNNER_CONTENT = `\
+"""Pyxenia script runner — handles file-lock conflicts transparently."""
+import sys, os, builtins, runpy
+
+_orig_open = builtins.open
+
+def _find_safe_path(filepath):
+    """Find a free filename: file.ext -> file (1).ext -> file (2).ext ..."""
+    if not os.path.exists(filepath):
+        return filepath
+    base, ext = os.path.splitext(filepath)
+    n = 1
+    while True:
+        candidate = f"{base} ({n}){ext}"
+        if not os.path.exists(candidate):
+            return candidate
+        n += 1
+
+def _safe_open(file, mode='r', *args, **kwargs):
+    # Default all text-mode opens to UTF-8 — avoids Windows cp1252 encoding errors
+    if isinstance(mode, str) and 'b' not in mode and 'encoding' not in kwargs:
+        kwargs['encoding'] = 'utf-8'
+    if isinstance(mode, str) and any(c in mode for c in ('w', 'x')):
+        try:
+            return _orig_open(file, mode, *args, **kwargs)
+        except PermissionError:
+            fp = os.fspath(file) if hasattr(file, '__fspath__') else str(file)
+            safe = _find_safe_path(fp)
+            print(f"[Pyxenia] '{os.path.basename(fp)}' is in use — saving as '{os.path.basename(safe)}'")
+            return _orig_open(safe, mode, *args, **kwargs)
+    return _orig_open(file, mode, *args, **kwargs)
+
+builtins.open = _safe_open
+
+sys.argv = sys.argv[1:]
+if not sys.argv:
+    print("Pyxenia runner: no script specified", file=sys.stderr)
+    sys.exit(1)
+
+runpy.run_path(sys.argv[0], run_name='__main__')
+`;
+fs.writeFileSync(RUNNER_PATH, RUNNER_CONTENT, 'utf8');
+
 let mainWindow;
 
 // ─── Find Python ──────────────────────────────────────────────────────────────
@@ -494,7 +539,7 @@ ipcMain.handle('run-script', (_, { projectId, scriptId, inputFile }) => {
 
   const pythonExe = fs.existsSync(pythonBin) ? pythonBin : findPython();
 
-  const args = [script.filePath];
+  const args = [RUNNER_PATH, script.filePath];
   if (inputFile && typeof inputFile === 'string' && fs.existsSync(inputFile)) args.push(inputFile);
 
   // Each script gets its own output subdirectory so files don't mix across scripts
