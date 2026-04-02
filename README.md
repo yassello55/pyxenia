@@ -113,10 +113,4 @@ PRs welcome! Please open an issue first to discuss changes.
 
 ---
 
-## 📄 License
-
-MIT — free to use, modify, and distribute.
-
----
-
 **Made with ⚡ for everyone who ever got a Python script and had no idea how to run it.**
