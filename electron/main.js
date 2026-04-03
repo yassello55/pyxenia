@@ -696,6 +696,16 @@ const IMPORT_TO_PIP = {
   skimage: 'scikit-image',
   attr: 'attrs',
   boto3: 'boto3',
+  googlesearch: 'googlesearch-python',
+  fake_useragent: 'fake-useragent',
+  bs4: 'beautifulsoup4',
+  lxml: 'lxml',
+  werkzeug: 'Werkzeug',
+  flask: 'Flask',
+  django: 'Django',
+  sqlalchemy: 'SQLAlchemy',
+  aiohttp: 'aiohttp',
+  httpx: 'httpx',
 };
 
 ipcMain.handle('detect-imports', (_, code) => {

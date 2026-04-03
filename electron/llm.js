@@ -172,6 +172,7 @@ output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx
 - Never ask the user to paste code — use the read_script tool to read it directly.
 - Do not add unsolicited warnings, disclaimers, or "best practices" lectures.
 - ALWAYS open files with explicit UTF-8 encoding to avoid Windows encoding errors: open('file.txt', 'w', encoding='utf-8') and open('file.txt', 'r', encoding='utf-8')
+- Some packages have different import names vs pip names — always use the pip name in comments and installs: googlesearch-python (not googlesearch), fake-useragent (not fake_useragent), opencv-python (not cv2), Pillow (not PIL), scikit-learn (not sklearn), beautifulsoup4 (not bs4), pyyaml (not yaml), pymupdf (not fitz), python-docx (not docx)
 
 ## OUTPUT FORMAT
 - Use triple-backtick python code blocks for all code.
