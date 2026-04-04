@@ -727,10 +727,12 @@ ipcMain.handle('detect-imports', (_, code) => {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Parse: # pip install pkg1 pkg2[extra] pkg3==1.0 ...
-    const pipComment = trimmed.match(/^#\s*pip\s+install\s+(.+)/i);
-    if (pipComment) {
-      pipComment[1].split(/\s+/).forEach(token => {
+    // Parse pip install lines from both # comments and docstring bodies:
+    //   # pip install pkg1 pkg2
+    //   pip install pkg1 pkg2   (inside """ docstrings)
+    const pipLine = trimmed.match(/^#?\s*pip\s+install\s+(.+)/i);
+    if (pipLine) {
+      pipLine[1].split(/\s+/).forEach(token => {
         // Strip version specifiers and extras: pkg==1.0, pkg>=2, pkg[extra]
         const name = token.split(/[=<>!\[]/)[0].trim();
         if (name && isValidPackageName(name)) imports.add(name);

@@ -196,15 +196,22 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         outputPreview: preview,
         output: [...currentOutputRef.current, exitLine],
       }]);
-      // Detect missing dependencies from stderr output
-      if (exitCode !== 0) {
-        const stderr = currentOutputRef.current.filter(l => l.type === 'stderr').map(l => l.text).join('');
-        const moduleErrors = [...stderr.matchAll(/(?:ModuleNotFoundError|ImportError)[^\n]*'([^']+)'/g)];
-        if (moduleErrors.length > 0) {
-          const names = [...new Set(moduleErrors.map(m => m[1].split('.')[0]))];
-          setMissingDepNames(names);
-          setShowMissingDepsWarning(true);
-        }
+      // Detect missing dependencies from all output (not just on error exit —
+      // scripts may catch exceptions internally and still exit with code 0)
+      const allText = currentOutputRef.current.map(l => l.text).join('');
+      const missing = new Set();
+      // ModuleNotFoundError / ImportError: No module named 'xxx'
+      for (const m of allText.matchAll(/(?:ModuleNotFoundError|ImportError)[^\n]*'([^']+)'/g))
+        missing.add(m[1].split('.')[0]);
+      // BeautifulSoup FeatureNotFound: features you requested: lxml
+      for (const m of allText.matchAll(/features you requested:\s*([\w][\w-]*)/g))
+        missing.add(m[1]);
+      // pkg_resources.DistributionNotFound: The 'xxx' distribution was not found
+      for (const m of allText.matchAll(/DistributionNotFound[^\n]*'([^']+)'/g))
+        missing.add(m[1].split('.')[0]);
+      if (missing.size > 0) {
+        setMissingDepNames([...missing]);
+        setShowMissingDepsWarning(true);
       }
       currentOutputRef.current = [];
       api.listScriptFiles({ projectId: project.id, scriptId: script.id }).then(setScriptFiles);
@@ -674,11 +681,19 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
               </div>
             </div>
             <div className="modal-actions">
-              <button className="btn-primary" onClick={() => {
+              <button className="btn-primary" onClick={async () => {
                 setShowMissingDepsWarning(false);
                 setShowInstallPanel(true);
-                handleDetect();
-              }}>Auto-detect &amp; Install</button>
+                setInstallLog([]);
+                // Resolve import names → pip package names via IMPORT_TO_PIP map on backend
+                const fakeCode = missingDepNames.map(n => `import ${n}`).join('\n');
+                const resolved = await api.detectImports(fakeCode);
+                const installed = await api.listPackages(project.id);
+                const installedNames = new Set((installed || []).map(p => p.name.toLowerCase()));
+                setInstalledPkgs([...installedNames]);
+                setDetectedPkgs(resolved);
+                setMissingPkgs(resolved.filter(p => !installedNames.has(p.toLowerCase())));
+              }}>Install Missing</button>
               <button className="btn-ghost" onClick={() => setShowMissingDepsWarning(false)}>Dismiss</button>
             </div>
           </div>
