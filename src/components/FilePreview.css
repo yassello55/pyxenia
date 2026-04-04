@@ -238,7 +238,7 @@
 }
 
 .datatable {
-  width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
   font-family: var(--mono);
   font-size: 12px;

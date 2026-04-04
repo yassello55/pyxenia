@@ -19,6 +19,7 @@ export default function Sidebar({
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
+  const [nameError, setNameError] = useState('');
 
   const [showCatForm, setShowCatForm] = useState(false);
   const [catName, setCatName] = useState('');
@@ -31,8 +32,13 @@ export default function Sidebar({
 
   const handleCreate = () => {
     if (!name.trim()) return;
-    onCreateProject(name.trim(), desc.trim());
-    setName(''); setDesc(''); setShowForm(false);
+    const trimmed = name.trim();
+    if (projects.some(p => p.name.toLowerCase() === trimmed.toLowerCase())) {
+      setNameError('A project with this name already exists.');
+      return;
+    }
+    onCreateProject(trimmed, desc.trim());
+    setName(''); setDesc(''); setNameError(''); setShowForm(false);
   };
 
   const handleCreateCategory = () => {
@@ -187,13 +193,14 @@ export default function Sidebar({
       {showForm ? (
         <div className="create-form slide-in">
           <input
-            className="form-input"
+            className={`form-input${nameError ? ' form-input--error' : ''}`}
             placeholder="Project name"
             value={name}
-            onChange={e => setName(e.target.value)}
+            onChange={e => { setName(e.target.value); setNameError(''); }}
             onKeyDown={e => e.key === 'Enter' && handleCreate()}
             autoFocus
           />
+          {nameError && <div className="form-error">{nameError}</div>}
           <input
             className="form-input"
             placeholder="Description (optional)"
@@ -203,7 +210,7 @@ export default function Sidebar({
           />
           <div className="form-actions">
             <button className="btn-primary" onClick={handleCreate} disabled={!name.trim()}>Create</button>
-            <button className="btn-ghost" onClick={() => { setShowForm(false); setName(''); setDesc(''); }}>Cancel</button>
+            <button className="btn-ghost" onClick={() => { setShowForm(false); setName(''); setDesc(''); setNameError(''); }}>Cancel</button>
           </div>
         </div>
       ) : (

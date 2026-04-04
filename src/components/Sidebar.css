@@ -220,6 +220,14 @@
 
 .form-input:focus { border-color: var(--accent); }
 .form-input::placeholder { color: var(--text3); }
+.form-input--error { border-color: var(--red) !important; }
+
+.form-error {
+  font-size: 11px;
+  color: var(--red);
+  margin-top: -3px;
+  margin-bottom: 6px;
+}
 
 .form-actions { display: flex; gap: 6px; }
 
@@ -313,4 +321,14 @@
   padding: 1px 4px;
   width: 100%;
   outline: none;
+}
+.rename-input--error { border-color: var(--red) !important; }
+
+.rename-error {
+  font-size: 10px;
+  color: var(--red);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

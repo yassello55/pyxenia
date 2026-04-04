@@ -18,6 +18,7 @@ export default function CategorySection({
 }) {
   const [renamingProjectId, setRenamingProjectId] = useState(null);
   const [renameProjectValue, setRenameProjectValue] = useState('');
+  const [renameProjectError, setRenameProjectError] = useState('');
   const [renamingCategory, setRenamingCategory] = useState(false);
   const [renameCatValue, setRenameCatValue] = useState('');
   const [deleteCatConfirm, setDeleteCatConfirm] = useState(false);
@@ -46,8 +47,13 @@ export default function CategorySection({
   };
 
   const commitRenameProject = (id) => {
-    if (renameProjectValue.trim()) onRenameProject(id, renameProjectValue.trim());
+    const trimmed = renameProjectValue.trim();
+    if (!trimmed) { setRenamingProjectId(null); setRenameProjectError(''); return; }
+    const duplicate = projects.some(p => p.id !== id && p.name.toLowerCase() === trimmed.toLowerCase());
+    if (duplicate) { setRenameProjectError('Name already used by another project.'); return; }
+    onRenameProject(id, trimmed);
     setRenamingProjectId(null);
+    setRenameProjectError('');
   };
 
   const handleDeleteProject = (e, id) => {
@@ -145,18 +151,20 @@ export default function CategorySection({
               </div>
               <div className="project-item-info">
                 {renamingProjectId === p.id ? (
-                  <input
-                    className="rename-input"
-                    value={renameProjectValue}
-                    onChange={e => setRenameProjectValue(e.target.value)}
-                    onBlur={() => commitRenameProject(p.id)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') commitRenameProject(p.id);
-                      if (e.key === 'Escape') setRenamingProjectId(null);
-                    }}
-                    onClick={e => e.stopPropagation()}
-                    autoFocus
-                  />
+                  <div onClick={e => e.stopPropagation()}>
+                    <input
+                      className={`rename-input${renameProjectError ? ' rename-input--error' : ''}`}
+                      value={renameProjectValue}
+                      onChange={e => { setRenameProjectValue(e.target.value); setRenameProjectError(''); }}
+                      onBlur={() => commitRenameProject(p.id)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') commitRenameProject(p.id);
+                        if (e.key === 'Escape') { setRenamingProjectId(null); setRenameProjectError(''); }
+                      }}
+                      autoFocus
+                    />
+                    {renameProjectError && <div className="rename-error">{renameProjectError}</div>}
+                  </div>
                 ) : (
                   <div className="project-item-name" onDoubleClick={e => startRenameProject(e, p)}>
                     {p.name}
