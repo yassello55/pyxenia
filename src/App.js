@@ -22,6 +22,7 @@ export default function App() {
   const [chatWidth, setChatWidth] = useState(400);
   const [activeScriptCtx, setActiveScriptCtx] = useState(null); // { script, project, code }
   const [debugMessage, setDebugMessage] = useState(null);
+  const [isLlmEditing, setIsLlmEditing] = useState(false);
   const isResizingChat = useRef(false);
   const { settings, updateSettings } = useSettings();
 
@@ -174,6 +175,7 @@ export default function App() {
                     showChat={showChat}
                     onToggleChat={() => setShowChat(p => !p)}
                     onActiveScriptChange={setActiveScriptCtx}
+                    isLlmEditing={isLlmEditing}
                     onDebugWithAI={(summary, script, project) => {
                       setDebugMessage({ summary, script, project });
                       setShowChat(true);
@@ -196,6 +198,7 @@ export default function App() {
                       debugMessage={debugMessage}
                       onDebugMessageUsed={() => setDebugMessage(null)}
                       onOpenSettings={() => setShowSettings(true)}
+                      onLlmEditingChange={setIsLlmEditing}
                     />
                   </div>
                 </>

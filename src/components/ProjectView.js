@@ -3,7 +3,7 @@ import { Plus, Upload, FileCode2, Trash2, ChevronRight } from 'lucide-react';
 import ScriptEditor from './ScriptEditor';
 import './ProjectView.css';
 
-export default function ProjectView({ project, onProjectUpdate, showChat, onToggleChat, onActiveScriptChange, onDebugWithAI }) {
+export default function ProjectView({ project, onProjectUpdate, showChat, onToggleChat, onActiveScriptChange, onDebugWithAI, isLlmEditing }) {
   const [scripts, setScripts] = useState([]);
   const [activeScriptId, setActiveScriptId] = useState(null);
   const [scriptStatuses, setScriptStatuses] = useState({}); // { [scriptId]: 'idle'|'running'|'done'|'error' }
@@ -250,6 +250,7 @@ export default function ProjectView({ project, onProjectUpdate, showChat, onTogg
               projectHasRunningScript={anyRunning}
               initialCache={scriptCacheRef.current[activeScript.id] || null}
               onCacheUpdate={data => { scriptCacheRef.current[activeScript.id] = data; }}
+              isLlmEditing={isLlmEditing}
             />
           ) : (
             <div className="no-script-selected">

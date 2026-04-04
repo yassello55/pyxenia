@@ -49,7 +49,7 @@ function summarizeConsoleErrors(output) {
   return errorBlock.trim();
 }
 
-export default function ScriptEditor({ script, project, onSave, showChat, onToggleChat, onDebugWithAI, onCodeLoad, onRunningChange, projectHasRunningScript, isRunning: initialRunning, initialCache, onCacheUpdate }) {
+export default function ScriptEditor({ script, project, onSave, showChat, onToggleChat, onDebugWithAI, onCodeLoad, onRunningChange, projectHasRunningScript, isRunning: initialRunning, initialCache, onCacheUpdate, isLlmEditing }) {
   const { settings } = useContext(SettingsContext);
   const [code, setCode] = useState('');
   const [output, setOutput] = useState(initialCache?.output || []);
@@ -83,6 +83,12 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   const [showMissingDepsWarning, setShowMissingDepsWarning] = useState(false);
   const [missingDepNames, setMissingDepNames] = useState([]);
   const [lastExitCode, setLastExitCode] = useState(initialCache?.lastExitCode ?? null);
+
+  // Find bar
+  const [showFind, setShowFind] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [findIndex, setFindIndex] = useState(0);
+  const findInputRef = useRef(null);
 
   // Refs to always hold latest values for cache-on-unmount (avoids stale closure)
   const outputRef      = useRef(output);
@@ -170,6 +176,20 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
       onCodeLoad?.(loaded);
     });
   }, [script.id]);
+
+  // Reload code from disk when LLM finishes editing (isLlmEditing: true → false)
+  const prevLlmEditing = useRef(false);
+  useEffect(() => {
+    if (prevLlmEditing.current && !isLlmEditing) {
+      api.readScript(script.filePath).then(c => {
+        const loaded = c || '';
+        setCode(loaded);
+        setSaved(true);
+        onCodeLoad?.(loaded);
+      });
+    }
+    prevLlmEditing.current = !!isLlmEditing;
+  }, [isLlmEditing]);
 
   // Script run events
   useEffect(() => {
@@ -355,7 +375,33 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     { key: 'Enter', ctrl: true, action: () => { if (!running && project.envReady) handleRun(); }, allowInInput: true },
     { key: 'k',     ctrl: true, action: () => setOutput([]),                                       allowInInput: false },
     { key: 'h',     ctrl: true, action: () => setShowHistory(p => !p),                            allowInInput: false },
+    { key: 'f',     ctrl: true, action: () => { setShowFind(true); setTimeout(() => findInputRef.current?.focus(), 50); }, allowInInput: true },
   ], [running, project.envReady, code]);
+
+  // Compute find matches from current query
+  const findMatches = React.useMemo(() => {
+    if (!findQuery) return [];
+    const matches = [];
+    const lower = code.toLowerCase();
+    const q = findQuery.toLowerCase();
+    let pos = 0;
+    while (pos < lower.length) {
+      const idx = lower.indexOf(q, pos);
+      if (idx === -1) break;
+      matches.push(idx);
+      pos = idx + 1;
+    }
+    return matches;
+  }, [code, findQuery]);
+
+  const safeIndex = findMatches.length ? findIndex % findMatches.length : 0;
+
+  const closeFindBar = () => { setShowFind(false); setFindQuery(''); };
+
+  const navigateFind = (dir) => {
+    if (!findMatches.length) return;
+    setFindIndex(prev => (prev + dir + findMatches.length) % findMatches.length);
+  };
 
   const handleTabKey = (e) => {
     if (e.key === 'Tab') {
@@ -504,6 +550,30 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         </div>
       )}
 
+      {/* ── Find bar ── */}
+      {showFind && (
+        <div className="find-bar">
+          <Search size={13} className="find-bar-icon" />
+          <input
+            ref={findInputRef}
+            className="find-bar-input"
+            placeholder="Find in code…"
+            value={findQuery}
+            onChange={e => { setFindQuery(e.target.value); setFindIndex(0); }}
+            onKeyDown={e => {
+              if (e.key === 'Escape') closeFindBar();
+              if (e.key === 'Enter') navigateFind(e.shiftKey ? -1 : 1);
+            }}
+          />
+          <span className="find-bar-count">
+            {findMatches.length === 0 ? (findQuery ? 'No results' : '') : `${safeIndex + 1} / ${findMatches.length}`}
+          </span>
+          <button className="find-bar-nav" onClick={() => navigateFind(-1)} disabled={!findMatches.length} title="Previous (Shift+Enter)">↑</button>
+          <button className="find-bar-nav" onClick={() => navigateFind(1)}  disabled={!findMatches.length} title="Next (Enter)">↓</button>
+          <button className="find-bar-close" onClick={closeFindBar} title="Close (Esc)">✕</button>
+        </div>
+      )}
+
       {/* ── Resizable split container ── */}
       <div className="split-container" ref={splitContainerRef}>
 
@@ -543,6 +613,9 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
               fontSize={settings.fontSize}
               lineHeight={settings.lineHeight}
               onScroll={syncLineNumberScroll}
+              findMatches={findMatches}
+              findActiveIndex={safeIndex}
+              findQuery={findQuery}
             />
           ) : (
             <textarea
@@ -564,6 +637,14 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
                 <FileInput size={28} />
                 <div>Drop a <strong>.py</strong> file to load code</div>
                 <div>or any data file to use as input</div>
+              </div>
+            </div>
+          )}
+          {isLlmEditing && (
+            <div className="llm-editing-overlay">
+              <div className="llm-editing-box">
+                <Loader size={18} className="spin" />
+                <span>AI is editing the code…</span>
               </div>
             </div>
           )}

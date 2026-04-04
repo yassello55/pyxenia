@@ -142,9 +142,18 @@ function MessageBubble({ msg }) {
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
 const DEFAULT_SCRIPT_PLACEHOLDER = 'print("Hello from Pyxenia!")';
 
-export default function ChatPanel({ onClose, activeProject, activeScript, activeScriptCode, inputFilePath, onOpenSettings, debugMessage, onDebugMessageUsed }) {
+export default function ChatPanel({ onClose, activeProject, activeScript, activeScriptCode, inputFilePath, onOpenSettings, debugMessage, onDebugMessageUsed, onLlmEditingChange }) {
   const { settings } = useContext(SettingsContext);
-  const { messages, isStreaming, error, sendMessage, abort, clear } = useChat(CHAT_ID);
+  const { messages, isStreaming, isLlmEditing, error, sendMessage, abort, clear } = useChat(CHAT_ID);
+
+  // Notify parent when LLM write_script editing state changes
+  const prevLlmEditing = useRef(false);
+  useEffect(() => {
+    if (isLlmEditing !== prevLlmEditing.current) {
+      prevLlmEditing.current = isLlmEditing;
+      onLlmEditingChange?.(isLlmEditing);
+    }
+  }, [isLlmEditing, onLlmEditingChange]);
 
   const [provider, setProvider] = useState(() => {
     const stored = localStorage.getItem('llm-provider');

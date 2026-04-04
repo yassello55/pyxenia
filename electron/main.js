@@ -907,6 +907,11 @@ ipcMain.handle('llm:send', async (_, { chatId, messages, provider, model, contex
           mainWindow.webContents.send('llm:tool-done', { chatId, toolName, result });
         }
       },
+      onHeartbeat: () => {
+        if (!abortRef.aborted && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('llm:heartbeat', { chatId });
+        }
+      },
     });
 
     if (!abortRef.aborted) {

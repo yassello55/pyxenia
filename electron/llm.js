@@ -32,6 +32,16 @@ function validateToolInput(name, input) {
       // Block obvious traversal and injection attempts at this layer (isPathAllowed in llmTools is the real enforcement)
       if (input.file_path.includes('..') || input.file_path.includes('\x00')) return null;
       return { file_path: input.file_path.slice(0, 500) };
+    case 'patch_script':
+      if (typeof input.project_id !== 'string' || typeof input.script_id !== 'string') return null;
+      if (!input.project_id || !input.script_id) return null;
+      if (!Array.isArray(input.patches)) return null;
+      return { project_id: input.project_id.slice(0, 100), script_id: input.script_id.slice(0, 100), patches: input.patches };
+    case 'write_script':
+      if (typeof input.project_id !== 'string' || typeof input.script_id !== 'string') return null;
+      if (!input.project_id || !input.script_id) return null;
+      if (typeof input.code !== 'string') return null;
+      return { project_id: input.project_id.slice(0, 100), script_id: input.script_id.slice(0, 100), code: input.code };
     default:
       return null;
   }
@@ -170,6 +180,8 @@ output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx
 - Ask at most ONE clarifying question, only when a wrong assumption would waste major effort.
 - When a script needs external libraries, add a comment at the top: # pip install <package>
 - Never ask the user to paste code — use the read_script tool to read it directly.
+- When a user asks you to modify, fix, or update a script: use read_script to get the current code, then use patch_script to apply ONLY the changed portions — never rewrite the whole file. Each patch specifies exact old_code (must match the file character-for-character including indentation) and new_code. Use multiple patches in one call if needed. Only use write_script when creating a brand-new script from scratch.
+- CRITICAL: After calling patch_script, always check the response. If success is false or failed > 0, DO NOT tell the user it is done. Instead re-read the script with read_script, find the exact text that needs changing, and retry patch_script with the corrected old_code. Only confirm "✅ Done" after a response with success: true and failed: 0.
 - Do not add unsolicited warnings, disclaimers, or "best practices" lectures.
 - ALWAYS open files with explicit UTF-8 encoding to avoid Windows encoding errors: open('file.txt', 'w', encoding='utf-8') and open('file.txt', 'r', encoding='utf-8')
 - Some packages have different import names vs pip names — always use the pip name in comments and installs: googlesearch-python (not googlesearch), fake-useragent (not fake_useragent), opencv-python (not cv2), Pillow (not PIL), scikit-learn (not sklearn), beautifulsoup4 (not bs4), pyyaml (not yaml), pymupdf (not fitz), python-docx (not docx)
@@ -278,7 +290,7 @@ function toGeminiLastParts(lastMsg) {
 
 // ─── Claude provider ──────────────────────────────────────────────────────────
 
-async function runClaude({ apiKey, model, system, messages, onToken, onToolStart, onToolDone }) {
+async function runClaude({ apiKey, model, system, messages, onToken, onToolStart, onToolDone, onHeartbeat }) {
   const Anthropic = require('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey, maxRetries: 1 });
 
@@ -286,6 +298,7 @@ async function runClaude({ apiKey, model, system, messages, onToken, onToolStart
   let fullText = '';
 
   for (let iteration = 0; iteration < 10; iteration++) {
+    onHeartbeat?.();
     const stream = client.messages.stream({
       model,
       max_tokens: 4096,
@@ -346,7 +359,7 @@ async function runClaude({ apiKey, model, system, messages, onToken, onToolStart
 
 // ─── OpenAI provider ──────────────────────────────────────────────────────────
 
-async function runOpenAI({ apiKey, model, system, messages, onToken, onToolStart, onToolDone }) {
+async function runOpenAI({ apiKey, model, system, messages, onToken, onToolStart, onToolDone, onHeartbeat }) {
   const OpenAI = require('openai');
   const client = new OpenAI({ apiKey, maxRetries: 1 });
 
@@ -354,6 +367,7 @@ async function runOpenAI({ apiKey, model, system, messages, onToken, onToolStart
   let fullText = '';
 
   for (let iteration = 0; iteration < 10; iteration++) {
+    onHeartbeat?.();
     const stream = await client.chat.completions.create({
       model,
       messages: oaiMessages,
@@ -435,7 +449,7 @@ async function runOpenAI({ apiKey, model, system, messages, onToken, onToolStart
 
 // ─── Gemini provider ──────────────────────────────────────────────────────────
 
-async function runGemini({ apiKey, model, system, messages, onToken, onToolStart, onToolDone }) {
+async function runGemini({ apiKey, model, system, messages, onToken, onToolStart, onToolDone, onHeartbeat }) {
   const { GoogleGenerativeAI } = require('@google/generative-ai');
   const genAI = new GoogleGenerativeAI(apiKey);
 
@@ -454,6 +468,7 @@ async function runGemini({ apiKey, model, system, messages, onToken, onToolStart
   let currentParts = toGeminiLastParts(lastMsg);
 
   for (let iteration = 0; iteration < 10; iteration++) {
+    onHeartbeat?.();
     const result = await chat.sendMessage(currentParts);
     const response = result.response;
     const responseText = response.text();
@@ -529,14 +544,14 @@ const DEFAULT_MODELS = {
  * @param {Function} params.onToolStart - called when a tool starts: (name, input)
  * @param {Function} params.onToolDone - called when a tool finishes: (name, result)
  */
-async function chat({ provider, model, apiKey, messages, context = {}, onToken, onToolStart, onToolDone }) {
+async function chat({ provider, model, apiKey, messages, context = {}, onToken, onToolStart, onToolDone, onHeartbeat }) {
   const runner = PROVIDER_MAP[provider];
   if (!runner) throw new Error(`Unknown provider: ${provider}`);
 
   const system = buildSystemPrompt(context);
   const resolvedModel = sanitizeModel(model, DEFAULT_MODELS[provider]);
 
-  return runner({ apiKey, model: resolvedModel, system, messages, onToken, onToolStart, onToolDone });
+  return runner({ apiKey, model: resolvedModel, system, messages, onToken, onToolStart, onToolDone, onHeartbeat });
 }
 
 module.exports = { chat, DEFAULT_MODELS };

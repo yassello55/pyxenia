@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const LLM_TIMEOUT_MS = 90_000; // 90 seconds — abort if no response by then
+const LLM_TIMEOUT_MS = 90_000; // 90 seconds of inactivity — reset on every event
 
 const api = window.pyxenia;
 
@@ -10,6 +10,7 @@ export function useChat(chatId) {
   const [error, setError] = useState(null);
   const streamingRef = useRef('');
   const timeoutRef = useRef(null);
+  const abortChatId = useRef(null);
 
   const clearStreamingState = useCallback((errorMsg = null) => {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
@@ -22,11 +23,23 @@ export function useChat(chatId) {
     if (errorMsg) setError(errorMsg);
   }, []);
 
+  // Resets the inactivity timer — called on every token/tool event so the
+  // timeout only fires if nothing happens for 90s, not from request start
+  const resetTimeout = useCallback(() => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      console.warn('[Chat] LLM timeout — aborting');
+      if (abortChatId.current) api.llmAbort(abortChatId.current);
+      clearStreamingState('Request timed out — please try again');
+    }, LLM_TIMEOUT_MS);
+  }, [clearStreamingState]);
+
   useEffect(() => {
     if (!chatId) return;
 
     const unsubToken = api.onLlmToken(({ chatId: cid, text }) => {
       if (cid !== chatId) return;
+      resetTimeout();
       if (streamingRef.current.length === 0) console.log('[Chat] First token received');
       streamingRef.current += text;
       setMessages(prev => {
@@ -40,6 +53,7 @@ export function useChat(chatId) {
 
     const unsubToolStart = api.onLlmToolStart(({ chatId: cid, toolName, toolInput }) => {
       if (cid !== chatId) return;
+      resetTimeout();
       setMessages(prev => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.streaming) {
@@ -52,6 +66,7 @@ export function useChat(chatId) {
 
     const unsubToolDone = api.onLlmToolDone(({ chatId: cid, toolName, result }) => {
       if (cid !== chatId) return;
+      resetTimeout();
       setMessages(prev => {
         const last = prev[prev.length - 1];
         if (last?.role === 'assistant' && last?.streaming) {
@@ -64,6 +79,11 @@ export function useChat(chatId) {
         }
         return prev;
       });
+    });
+
+    const unsubHeartbeat = api.onLlmHeartbeat(({ chatId: cid }) => {
+      if (cid !== chatId) return;
+      resetTimeout();
     });
 
     const unsubDone = api.onLlmDone(({ chatId: cid }) => {
@@ -79,7 +99,7 @@ export function useChat(chatId) {
     });
 
     return () => {
-      unsubToken(); unsubToolStart(); unsubToolDone(); unsubDone(); unsubError();
+      unsubToken(); unsubToolStart(); unsubToolDone(); unsubDone(); unsubError(); unsubHeartbeat();
     };
   }, [chatId]);
 
@@ -107,11 +127,8 @@ export function useChat(chatId) {
 
     console.log('[Chat] Sending to LLM:', { provider, model, chatId, msgCount: history.length });
 
-    timeoutRef.current = setTimeout(() => {
-      console.warn('[Chat] LLM timeout — aborting');
-      api.llmAbort(chatId);
-      clearStreamingState('Request timed out — please try again');
-    }, LLM_TIMEOUT_MS);
+    abortChatId.current = chatId;
+    resetTimeout();
 
     try {
       const result = await api.llmSend({ chatId, messages: history, provider, model, context });
@@ -143,5 +160,10 @@ export function useChat(chatId) {
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, error, sendMessage, abort, clear };
+  // True while a patch_script or write_script tool call is in progress
+  const isLlmEditing = messages.some(m =>
+    m.streaming && m.steps?.some(s => (s.tool === 'patch_script' || s.tool === 'write_script') && s.status === 'running')
+  );
+
+  return { messages, isStreaming, isLlmEditing, error, sendMessage, abort, clear };
 }

@@ -80,6 +80,43 @@ const TOOL_DEFS = [
       required: ['file_path'],
     },
   },
+  {
+    name: 'patch_script',
+    description: 'Apply targeted find-and-replace edits to a Python script WITHOUT rewriting the whole file. Use this for any modification — it is much faster and safer than write_script for large files. Each patch replaces an exact block of existing code with new code. IMPORTANT: old_code must match the current file exactly (including indentation and whitespace).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'The project ID' },
+        script_id:  { type: 'string', description: 'The script ID' },
+        patches: {
+          type: 'array',
+          description: 'List of replacements to apply in order. Each patch has old_code (exact text to find) and new_code (text to replace it with).',
+          items: {
+            type: 'object',
+            properties: {
+              old_code: { type: 'string', description: 'The exact existing code to find and replace. Must match precisely.' },
+              new_code: { type: 'string', description: 'The new code to replace it with.' },
+            },
+            required: ['old_code', 'new_code'],
+          },
+        },
+      },
+      required: ['project_id', 'script_id', 'patches'],
+    },
+  },
+  {
+    name: 'write_script',
+    description: 'Overwrite the ENTIRE script with new content. Only use this when creating a script from scratch or when the changes are so extensive that patch_script would require more than 10 patches. For any modification to an existing script, prefer patch_script instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string', description: 'The project ID' },
+        script_id:  { type: 'string', description: 'The script ID' },
+        code:       { type: 'string', description: 'The complete updated Python source code to write to the file' },
+      },
+      required: ['project_id', 'script_id', 'code'],
+    },
+  },
 ];
 
 // ─── Tool executor ────────────────────────────────────────────────────────────
@@ -141,6 +178,61 @@ async function executeTool(name, input) {
         const stat = fs.statSync(filePath);
         if (stat.size > 200 * 1024) return { error: 'File too large to read (> 200 KB). Consider reading a smaller file.' };
         return { content: fs.readFileSync(filePath, 'utf8') };
+      }
+
+      case 'patch_script': {
+        const projects = loadProjects();
+        const project = projects.find(p => p.id === input.project_id);
+        if (!project) return { error: 'Project not found' };
+        const script = (project.scripts || []).find(s => s.id === input.script_id);
+        if (!script) return { error: 'Script not found' };
+        if (!isPathAllowed(script.filePath)) return { error: 'Access denied' };
+        if (!Array.isArray(input.patches) || input.patches.length === 0) return { error: 'patches must be a non-empty array' };
+
+        let code = fs.readFileSync(script.filePath, 'utf8');
+        const results = [];
+        for (const patch of input.patches) {
+          const { old_code, new_code } = patch;
+          if (typeof old_code !== 'string' || typeof new_code !== 'string') {
+            results.push({ ok: false, error: 'Each patch needs old_code and new_code strings' });
+            continue;
+          }
+          if (!code.includes(old_code)) {
+            results.push({ ok: false, error: `old_code not found in file: ${old_code.slice(0, 60)}…` });
+            continue;
+          }
+          code = code.replace(old_code, new_code);
+          results.push({ ok: true });
+        }
+        const failed = results.filter(r => !r.ok);
+        // Only write file if at least one patch was applied
+        if (results.some(r => r.ok)) {
+          fs.writeFileSync(script.filePath, code, 'utf8');
+        }
+        return {
+          success: failed.length === 0,
+          applied: results.filter(r => r.ok).length,
+          failed: failed.length,
+          // Always include errors so LLM cannot miss them
+          errors: failed.length > 0 ? failed.map(r => r.error) : undefined,
+          lines: code.split('\n').length,
+          // Explicit instruction in response when patches fail
+          ...(failed.length > 0 && {
+            action_required: 'Some patches failed. Use read_script to re-read the current code, find the exact text, and retry patch_script with corrected old_code values.',
+          }),
+        };
+      }
+
+      case 'write_script': {
+        const projects = loadProjects();
+        const project = projects.find(p => p.id === input.project_id);
+        if (!project) return { error: 'Project not found' };
+        const script = (project.scripts || []).find(s => s.id === input.script_id);
+        if (!script) return { error: 'Script not found' };
+        if (!isPathAllowed(script.filePath)) return { error: 'Access denied' };
+        if (typeof input.code !== 'string') return { error: 'code must be a string' };
+        fs.writeFileSync(script.filePath, input.code, 'utf8');
+        return { success: true, lines: input.code.split('\n').length };
       }
 
       default:

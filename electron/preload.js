@@ -74,4 +74,5 @@ contextBridge.exposeInMainWorld('pyxenia', {
   onLlmToolDone:   (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('llm:tool-done',  h); return () => ipcRenderer.removeListener('llm:tool-done',  h); },
   onLlmDone:       (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('llm:done',       h); return () => ipcRenderer.removeListener('llm:done',       h); },
   onLlmError:      (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('llm:error',      h); return () => ipcRenderer.removeListener('llm:error',      h); },
+  onLlmHeartbeat:  (cb) => { const h = (_, d) => cb(d); ipcRenderer.on('llm:heartbeat',  h); return () => ipcRenderer.removeListener('llm:heartbeat',  h); },
 });
