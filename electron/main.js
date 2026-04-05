@@ -745,7 +745,8 @@ ipcMain.handle('detect-imports', (_, code) => {
     const pkg = (m1 || m2)?.[1]?.split('.')[0];
     if (pkg && !builtins.has(pkg) && !pkg.startsWith('_')) imports.add(pkg);
   }
-  return [...imports].map(pkg => IMPORT_TO_PIP[pkg] || pkg);
+  // Normalize hyphens/underscores (pip treats them as equivalent) then deduplicate
+  return [...new Set([...imports].map(pkg => (IMPORT_TO_PIP[pkg] || pkg).replace(/_/g, '-')))];
 });
 
 ipcMain.handle('open-project-folder', (_, projectId) => {
