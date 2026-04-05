@@ -83,7 +83,7 @@ function geminiTools() {
 
 // ─── System prompt builder ────────────────────────────────────────────────────
 
-function buildSystemPrompt(context) {
+function buildSystemPrompt(context, provider) {
   const { projects = [], activeProject = null, activeScript = null, inputFilePath = null } = context;
 
   const isGlobalChat = !activeProject;
@@ -213,6 +213,19 @@ output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx
       }
       system += '\n';
     });
+  }
+
+  // Provider-specific nudge for non-Claude models which tend to truncate or abbreviate code
+  if (provider && provider !== 'anthropic') {
+    system += `
+## CODE COMPLETENESS — MANDATORY
+You are generating Python scripts that will be saved to disk and executed directly. NEVER truncate, abbreviate, or summarise code under any circumstances.
+- Do NOT use placeholders like \`# ... rest of function ...\`, \`# (same as before)\`, or \`# TODO\`
+- Do NOT say "the rest of the code stays the same" — write ALL of it
+- Do NOT stop a script mid-function or mid-logic — always finish what you start
+- If a script is long, write every line in full — length is never a reason to cut short
+- Incomplete code will crash when the user runs it. Always output the complete, runnable script.
+`;
   }
 
   return system.trim();
@@ -548,7 +561,7 @@ async function chat({ provider, model, apiKey, messages, context = {}, onToken, 
   const runner = PROVIDER_MAP[provider];
   if (!runner) throw new Error(`Unknown provider: ${provider}`);
 
-  const system = buildSystemPrompt(context);
+  const system = buildSystemPrompt(context, provider);
   const resolvedModel = sanitizeModel(model, DEFAULT_MODELS[provider]);
 
   return runner({ apiKey, model: resolvedModel, system, messages, onToken, onToolStart, onToolDone, onHeartbeat });
