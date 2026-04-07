@@ -20,7 +20,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatWidth, setChatWidth] = useState(400);
-  const [activeScriptCtx, setActiveScriptCtx] = useState(null); // { script, project, code }
+  const [activeScriptCtx, setActiveScriptCtx] = useState(null); // { script, project, code, scriptArgs }
   const [debugMessage, setDebugMessage] = useState(null);
   const [isLlmEditing, setIsLlmEditing] = useState(false);
   const isResizingChat = useRef(false);
@@ -195,6 +195,7 @@ export default function App() {
                       activeProject={activeProject}
                       activeScript={activeScriptCtx?.script || null}
                       activeScriptCode={activeScriptCtx?.code || ''}
+                      scriptArgs={activeScriptCtx?.scriptArgs || []}
                       debugMessage={debugMessage}
                       onDebugMessageUsed={() => setDebugMessage(null)}
                       onOpenSettings={() => setShowSettings(true)}

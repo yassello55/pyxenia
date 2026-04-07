@@ -524,7 +524,7 @@ ipcMain.handle('pick-input-file', async () => {
 
 const runningProcesses = {};
 
-ipcMain.handle('run-script', (_, { projectId, scriptId, inputFile }) => {
+ipcMain.handle('run-script', (_, { projectId, scriptId, scriptArgs = [] }) => {
   const projects = loadProjects();
   const project = projects.find(p => p.id === projectId);
   if (!project) return { error: 'Project not found' };
@@ -540,7 +540,16 @@ ipcMain.handle('run-script', (_, { projectId, scriptId, inputFile }) => {
   const pythonExe = fs.existsSync(pythonBin) ? pythonBin : findPython();
 
   const args = [RUNNER_PATH, script.filePath];
-  if (inputFile && typeof inputFile === 'string' && fs.existsSync(inputFile)) args.push(inputFile);
+  // Pass script args in index order, filling gaps with empty string so sys.argv indices are correct
+  if (Array.isArray(scriptArgs) && scriptArgs.length > 0) {
+    const maxIdx = Math.max(...scriptArgs.map(a => a.index));
+    for (let i = 1; i <= maxIdx; i++) {
+      const arg = scriptArgs.find(a => a.index === i);
+      const val = arg?.value ? String(arg.value) : '';
+      // For file args, skip if file doesn't exist (pass empty so script gets correct argv length)
+      args.push(arg?.type === 'file' && val && !fs.existsSync(val) ? '' : val);
+    }
+  }
 
   // Each script gets its own output subdirectory so files don't mix across scripts
   const scriptOutputDir = path.join(path.dirname(script.filePath), script.id);
@@ -707,6 +716,31 @@ const IMPORT_TO_PIP = {
   aiohttp: 'aiohttp',
   httpx: 'httpx',
 };
+
+// Parse the # args: block from a Python script and return arg definitions
+ipcMain.handle('parse-script-args', (_, code) => {
+  const lines = code.split('\n');
+  const args = [];
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^#\s*args\s*:/i.test(trimmed)) { inBlock = true; continue; }
+    if (inBlock) {
+      if (!trimmed.startsWith('#')) break; // end of block
+      // Match:  #   1: var_name (file|value) - hint text
+      const m = trimmed.match(/^#\s+(\d+):\s+(\w+)\s+\((file|value)\)\s*(?:-\s*(.+))?$/i);
+      if (m) {
+        args.push({
+          index: parseInt(m[1], 10),
+          label: m[2].replace(/_/g, ' '),
+          type: m[3].toLowerCase(),
+          hint: (m[4] || '').trim(),
+        });
+      }
+    }
+  }
+  return args;
+});
 
 ipcMain.handle('detect-imports', (_, code) => {
   const lines = code.split('\n');

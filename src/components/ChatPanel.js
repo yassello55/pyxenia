@@ -142,7 +142,7 @@ function MessageBubble({ msg }) {
 // ─── ChatPanel ────────────────────────────────────────────────────────────────
 const DEFAULT_SCRIPT_PLACEHOLDER = 'print("Hello from Pyxenia!")';
 
-export default function ChatPanel({ onClose, activeProject, activeScript, activeScriptCode, inputFilePath, onOpenSettings, debugMessage, onDebugMessageUsed, onLlmEditingChange }) {
+export default function ChatPanel({ onClose, activeProject, activeScript, activeScriptCode, scriptArgs, onOpenSettings, debugMessage, onDebugMessageUsed, onLlmEditingChange }) {
   const { settings } = useContext(SettingsContext);
   const { messages, isStreaming, isLlmEditing, error, sendMessage, abort, clear } = useChat(CHAT_ID);
 
@@ -207,21 +207,32 @@ export default function ChatPanel({ onClose, activeProject, activeScript, active
     userScrolledUp.current = !atBottom;
   };
 
-  // Pre-fill input when a debug message comes in
+  // Auto-send debug message when it arrives
   useEffect(() => {
     if (!debugMessage) return;
     const { summary, script } = debugMessage;
     const text = `I ran **${script?.name || 'my script'}** and got these errors:\n\`\`\`\n${summary}\n\`\`\`\nCan you help me debug this?`;
-    setInput(text);
-    // Auto-resize textarea
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 140) + 'px';
-        textareaRef.current.focus();
-      }
-    }, 50);
     onDebugMessageUsed?.();
+    // Only auto-send if we have an API key and are not already streaming
+    if (!isStreaming && keyStatus[provider]) {
+      userScrolledUp.current = false;
+      const context = {
+        activeProject: activeProject || null,
+        activeScript: activeScript || null,
+        scriptArgs: scriptArgs || [],
+      };
+      sendMessage(text, { provider, model: model || availableModels[0], context, attachment: null });
+    } else {
+      // Fallback: pre-fill so the user can send manually
+      setInput(text);
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 140) + 'px';
+          textareaRef.current.focus();
+        }
+      }, 50);
+    }
   }, [debugMessage]);
 
   const hasKey = !!keyStatus[provider];
@@ -243,7 +254,7 @@ export default function ChatPanel({ onClose, activeProject, activeScript, active
     const context = {
       activeProject: activeProject || null,
       activeScript: activeScript || null,
-      inputFilePath: inputFilePath || null,
+      scriptArgs: scriptArgs || [],
     };
 
     await sendMessage(text, { provider, model: model || availableModels[0], context, attachment });

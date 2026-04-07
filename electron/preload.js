@@ -28,8 +28,9 @@ contextBridge.exposeInMainWorld('pyxenia', {
   importScript:  (projectId) => ipcRenderer.invoke('import-script', projectId),
   renameScript:  (data) => ipcRenderer.invoke('rename-script', data),
 
-  // Input file
-  pickInputFile: () => ipcRenderer.invoke('pick-input-file'),
+  // Input file / args
+  pickInputFile:   () => ipcRenderer.invoke('pick-input-file'),
+  parseScriptArgs: (code) => ipcRenderer.invoke('parse-script-args', code),
 
   // Run
   runScript:  (data) => ipcRenderer.invoke('run-script', data),

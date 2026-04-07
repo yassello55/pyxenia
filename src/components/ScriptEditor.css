@@ -724,6 +724,178 @@
 .file-btn.accent { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
 .file-btn.accent:hover { background: var(--accent); color: #fff; }
 
+/* ── Inputs panel ── */
+.inputs-panel {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inputs-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text2);
+  gap: 6px;
+}
+
+.inputs-empty {
+  font-size: 12px;
+  color: var(--text3);
+  padding: 6px 0;
+}
+.inputs-empty code {
+  background: var(--bg4);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.args-list { display: flex; flex-direction: column; gap: 6px; }
+
+.arg-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.arg-index {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: monospace;
+  min-width: 24px;
+  text-align: right;
+}
+
+.arg-label-input {
+  width: 120px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 3px 7px;
+  outline: none;
+}
+.arg-label-input:focus { border-color: var(--accent); }
+
+.arg-type-select {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text2);
+  font-size: 11px;
+  padding: 3px 5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.arg-file-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.arg-file-name {
+  font-size: 11px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.arg-placeholder { color: var(--text3); font-style: italic; }
+
+.arg-browse-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text2);
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.arg-browse-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.arg-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.arg-clear-btn:hover { color: var(--red); background: var(--red-bg); }
+
+.arg-value-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 3px 7px;
+  outline: none;
+  min-width: 0;
+}
+.arg-value-input:focus { border-color: var(--accent); }
+
+.arg-required-btn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--accent);
+  padding: 0 2px;
+  line-height: 1;
+}
+.arg-required-btn:hover { opacity: 0.7; }
+
+.arg-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text3);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.arg-remove-btn:hover { color: var(--red); background: var(--red-bg); }
+
+.inputs-add-btn {
+  background: var(--bg3);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  color: var(--text3);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, color 0.15s;
+}
+.inputs-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Toolbar inputs badge */
+.inputs-badge {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-left: 3px;
+}
+.inputs-badge--ok { background: var(--green-bg, #1a3a2a); color: var(--green, #4ade80); }
+.inputs-badge--warn { background: var(--red-bg, #3a1a1a); color: var(--red, #f87171); }
+
 /* ── Find bar ── */
 .find-bar {
   display: flex;

@@ -61,7 +61,11 @@ export default function ProjectView({ project, onProjectUpdate, showChat, onTogg
 
   const handleScriptCodeLoad = (code) => {
     setActiveScriptCode(code);
-    onActiveScriptChange?.({ script: activeScript || null, project, code });
+    onActiveScriptChange?.({ script: activeScript || null, project, code, scriptArgs: [] });
+  };
+
+  const handleScriptArgsChange = (scriptArgs) => {
+    onActiveScriptChange?.({ script: activeScript || null, project, code: activeScriptCode, scriptArgs });
   };
 
   const handleNewScript = async () => {
@@ -251,6 +255,7 @@ export default function ProjectView({ project, onProjectUpdate, showChat, onTogg
               initialCache={scriptCacheRef.current[activeScript.id] || null}
               onCacheUpdate={data => { scriptCacheRef.current[activeScript.id] = data; }}
               isLlmEditing={isLlmEditing}
+              onScriptArgsChange={handleScriptArgsChange}
             />
           ) : (
             <div className="no-script-selected">

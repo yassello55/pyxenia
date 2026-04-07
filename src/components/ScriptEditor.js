@@ -1,8 +1,68 @@
 import React, { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import {
   Play, Square, Save, Package, FileInput, FolderOutput, History,
-  CheckCircle2, Loader, Search, Info, FolderOpen, Download, Terminal, Files, Eye, MessageSquare, Bug
+  CheckCircle2, Loader, Search, FolderOpen, Download, Terminal, Files, Eye, MessageSquare, Bug, SlidersHorizontal
 } from 'lucide-react';
+
+// ─── Helpers: parse # args: block from script code ───────────────────────────
+
+function parseArgsBlock(code) {
+  const lines = code.split('\n');
+  const args = [];
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^#\s*args\s*:/i.test(trimmed)) { inBlock = true; continue; }
+    if (inBlock) {
+      if (!trimmed.startsWith('#')) break;
+      const m = trimmed.match(/^#\s+(\d+):\s+(\w+)\s+\((file|value)\)\s*(?:-\s*(.+))?$/i);
+      if (m) {
+        args.push({
+          index: parseInt(m[1], 10),
+          label: m[2].replace(/_/g, ' '),
+          type: m[3].toLowerCase(),
+          hint: (m[4] || '').trim(),
+        });
+      }
+    }
+  }
+  return args;
+}
+
+// Fallback: detect sys.argv[N] usages and guess type from context
+function detectArgsFromCode(code) {
+  const indices = new Set();
+  const re = /sys\.argv\s*\[\s*(\d+)\s*\]/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const idx = parseInt(m[1], 10);
+    if (idx >= 1) indices.add(idx);
+  }
+  return [...indices].sort((a, b) => a - b).map(idx => {
+    // Look for assignment: varname = sys.argv[idx]
+    const assignRe = new RegExp(`(\\w+)\\s*=\\s*sys\\.argv\\s*\\[\\s*${idx}\\s*\\]`);
+    const assignMatch = assignRe.exec(code);
+    const varName = assignMatch?.[1] || `arg${idx}`;
+
+    // Guess type
+    const idxPat = `sys\\.argv\\s*\\[\\s*${idx}\\s*\\]`;
+    const fileSignals = [
+      /open\s*\(/, /Path\s*\(/, /os\.path\.(?:exists|basename|splitext|dirname)\s*\(/,
+      /pd\.read_(?:csv|excel|json|parquet)\s*\(/, /Image\.open\s*\(/,
+    ];
+    const isFile =
+      fileSignals.some(sig => new RegExp(idxPat + '[^)]*\\)').test(code) && sig.test(code)) ||
+      ['file', 'path', 'input', 'image', 'csv', 'excel', 'dir', 'folder'].some(w => varName.toLowerCase().includes(w));
+    const isValue = new RegExp(`(?:int|float|str)\\s*\\(\\s*${idxPat}`).test(code);
+
+    return {
+      index: idx,
+      label: varName.replace(/_/g, ' '),
+      type: isFile && !isValue ? 'file' : 'value',
+      hint: '',
+    };
+  });
+}
 import EnvManager from './EnvManager';
 import RunHistory from './RunHistory';
 import HighlightedEditor from './HighlightedEditor';
@@ -49,15 +109,24 @@ function summarizeConsoleErrors(output) {
   return errorBlock.trim();
 }
 
-export default function ScriptEditor({ script, project, onSave, showChat, onToggleChat, onDebugWithAI, onCodeLoad, onRunningChange, projectHasRunningScript, isRunning: initialRunning, initialCache, onCacheUpdate, isLlmEditing }) {
+export default function ScriptEditor({ script, project, onSave, showChat, onToggleChat, onDebugWithAI, onCodeLoad, onRunningChange, projectHasRunningScript, isRunning: initialRunning, initialCache, onCacheUpdate, isLlmEditing, onScriptArgsChange }) {
   const { settings } = useContext(SettingsContext);
   const [code, setCode] = useState('');
   const [output, setOutput] = useState(initialCache?.output || []);
   const [running, setRunning] = useState(initialRunning || false);
   const [saved, setSaved] = useState(true);
-  const [inputFile, setInputFile] = useState(null);
-  const [showInputWarning, setShowInputWarning] = useState(false);
   const [showOutputWarning, setShowOutputWarning] = useState(false);
+
+  // Script arguments (replaces single inputFile)
+  const [scriptArgs, setScriptArgs] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`pyxenia-args-${script.id}`);
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+  const [showInputsPanel, setShowInputsPanel] = useState(false);
+  const [showMissingArgsWarning, setShowMissingArgsWarning] = useState(false);
+  const [missingArgLabels, setMissingArgLabels] = useState([]);
 
   // Install panel
   const [detectedPkgs, setDetectedPkgs] = useState([]);
@@ -168,12 +237,29 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     });
   }, [script.id]);
 
-  // Load code
+  // Merge detected arg definitions into scriptArgs state, preserving user-set values
+  const autoDetectArgs = useCallback((src) => {
+    const parsed = parseArgsBlock(src);
+    const detected = parsed.length > 0 ? parsed : detectArgsFromCode(src);
+    if (detected.length === 0) return;
+    setScriptArgs(prev => {
+      const merged = detected.map(def => {
+        const existing = prev.find(a => a.index === def.index);
+        return { ...def, value: existing?.value || '', required: true };
+      });
+      // Keep manually-added args not found in detection
+      const extra = prev.filter(a => !detected.find(d => d.index === a.index));
+      return [...merged, ...extra].sort((a, b) => a.index - b.index);
+    });
+  }, []);
+
+  // Load code + immediately detect args from the freshly-read source
   useEffect(() => {
     api.readScript(script.filePath).then(c => {
       const loaded = c || '';
       setCode(loaded);
       onCodeLoad?.(loaded);
+      autoDetectArgs(loaded); // use loaded string directly — avoids stale state read
     });
   }, [script.id]);
 
@@ -186,6 +272,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         setCode(loaded);
         setSaved(true);
         onCodeLoad?.(loaded);
+        autoDetectArgs(loaded); // pick up any # args: changes the LLM wrote
       });
     }
     prevLlmEditing.current = !!isLlmEditing;
@@ -296,7 +383,34 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     return () => window.removeEventListener('keydown', handler);
   }, [handleSave]);
 
-  const doRun = async (inputFileOverride) => {
+  // Persist args to localStorage whenever they change
+  useEffect(() => {
+    try { localStorage.setItem(`pyxenia-args-${script.id}`, JSON.stringify(scriptArgs)); } catch {}
+    onScriptArgsChange?.(scriptArgs);
+  }, [scriptArgs]);
+
+  // Re-detect args when code changes (debounced — not on every keystroke)
+  const detectDebounceRef = useRef(null);
+  useEffect(() => {
+    if (!code) return;
+    if (detectDebounceRef.current) clearTimeout(detectDebounceRef.current);
+    detectDebounceRef.current = setTimeout(() => autoDetectArgs(code), 800);
+    return () => { if (detectDebounceRef.current) clearTimeout(detectDebounceRef.current); };
+  }, [code, autoDetectArgs]);
+
+  const updateArg = (i, field, val) => setScriptArgs(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: val } : a));
+  const removeArg = (i) => setScriptArgs(prev => prev.filter((_, idx) => idx !== i));
+  const addArg = () => setScriptArgs(prev => {
+    const maxIdx = prev.length > 0 ? Math.max(...prev.map(a => a.index)) : 0;
+    return [...prev, { index: maxIdx + 1, label: `arg ${maxIdx + 1}`, type: 'value', hint: '', value: '', required: false }];
+  });
+
+  const handlePickArgFile = async (i) => {
+    const p = await api.pickInputFile();
+    if (p) updateArg(i, 'value', p);
+  };
+
+  const doRun = async () => {
     await handleSave();
     setOutput([]);
     currentOutputRef.current = [];
@@ -304,14 +418,21 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     setRunning(true);
     onRunningChange?.(true, null);
     setShowHistory(false);
-    await api.runScript({ projectId: project.id, scriptId: script.id, inputFile: inputFileOverride ?? inputFile });
+    await api.runScript({ projectId: project.id, scriptId: script.id, scriptArgs });
   };
 
-  // Step 2: check input file, then run
+  // Step 2: check args, then run
   const proceedToInputCheck = () => {
-    const needsFile = /sys\.argv\s*\[/.test(code);
-    if (needsFile && !inputFile) {
-      setShowInputWarning(true);
+    const usesArgv = /sys\.argv\s*\[/.test(code);
+    if (usesArgv && scriptArgs.length === 0) {
+      // Script uses argv but user hasn't defined any args — open the panel as a hint
+      setShowInputsPanel(true);
+      return;
+    }
+    const missing = scriptArgs.filter(a => a.required && !a.value);
+    if (missing.length > 0) {
+      setMissingArgLabels(missing.map(a => a.label));
+      setShowMissingArgsWarning(true);
     } else {
       doRun();
     }
@@ -323,11 +444,11 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     // Safe: only the *basename* (filename) is extracted from input_file — directory is not preserved
     const riskyOutput = (
       // dirname(input_file) — explicitly saves to input file's directory
-      /os\.path\.dirname\s*\(.*(?:input_file|sys\.argv)/.test(code) ||
+      /os\.path\.dirname\s*\(.*(?:input_file\b|sys\.argv)/.test(code) ||
       // splitext applied directly to input path (not wrapped in basename) — full path including dir
-      /os\.path\.splitext\s*\(\s*(?:input_file|sys\.argv\s*\[\s*1\s*\])/.test(code) ||
+      /os\.path\.splitext\s*\(\s*(?:input_file\b|sys\.argv\s*\[\s*1\s*\])/.test(code) ||
       // direct string ops on input_file that preserve the path (slice, replace, rsplit on the full path)
-      /(?:input_file|sys\.argv\s*\[\s*1\s*\])\s*(?:\[:-?\d+\]|\.replace\s*\(|\.rsplit\s*\()/.test(code)
+      /(?:input_file\b|sys\.argv\s*\[\s*1\s*\])\s*(?:\[:-?\d+\]|\.replace\s*\(|\.rsplit\s*\()/.test(code)
     );
     if (riskyOutput) {
       setShowOutputWarning(true);
@@ -337,11 +458,6 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   };
 
   const handleStop = () => { api.stopScript(script.id); setRunning(false); onRunningChange?.(false, null); };
-
-  const handlePickInput = async () => {
-    const p = await api.pickInputFile();
-    if (p) setInputFile(p);
-  };
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -436,24 +552,25 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
           {!saved && <span className="unsaved-dot" title="Unsaved changes" />}
         </div>
         <div className="toolbar-right">
-          {inputFile && (
-            <div className="input-badge" title={inputFile}>
-              <FileInput size={11} />
-              <span className="input-badge-name">{inputFile.split(/[\\/]/).pop()}</span>
-              <div className="badge-info-wrap">
-                <Info size={11} className="badge-info-icon" />
-                <div className="badge-tooltip">
-                  <div className="badge-tooltip-title">Use in your script:</div>
-                  <code>import sys</code>
-                  <code>path = sys.argv[1]</code>
-                </div>
-              </div>
-              <button className="badge-close" onClick={() => setInputFile(null)}>✕</button>
-            </div>
-          )}
-          <button className="toolbar-btn" onClick={handlePickInput} title="Attach input file">
-            <FileInput size={14} /> Input file
-          </button>
+          {(() => {
+            const filled = scriptArgs.filter(a => a.value).length;
+            const total = scriptArgs.length;
+            const hasMissing = scriptArgs.some(a => a.required && !a.value);
+            return (
+              <button
+                className={`toolbar-btn ${showInputsPanel ? 'active' : ''}`}
+                onClick={() => setShowInputsPanel(p => !p)}
+                title="Script input arguments"
+              >
+                <SlidersHorizontal size={14} /> Inputs
+                {total > 0 && (
+                  <span className={`inputs-badge ${hasMissing ? 'inputs-badge--warn' : 'inputs-badge--ok'}`}>
+                    {filled}/{total}
+                  </span>
+                )}
+              </button>
+            );
+          })()}
           <button
             className="toolbar-btn"
             onClick={() => setShowEnvManager(true)}
@@ -550,6 +667,71 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         </div>
       )}
 
+      {/* ── Inputs panel ── */}
+      {showInputsPanel && (
+        <div className="inputs-panel fade-in">
+          <div className="inputs-panel-header">
+            <span><SlidersHorizontal size={13} /> Script Inputs</span>
+            <button className="icon-btn" onClick={() => setShowInputsPanel(false)}>✕</button>
+          </div>
+          {scriptArgs.length === 0 ? (
+            <div className="inputs-empty">
+              No arguments defined. Add a <code># args:</code> block to your script, or add manually below.
+            </div>
+          ) : (
+            <div className="args-list">
+              {scriptArgs.map((arg, i) => (
+                <div key={arg.index} className="arg-row">
+                  <span className="arg-index">[{arg.index}]</span>
+                  <input
+                    className="arg-label-input"
+                    value={arg.label}
+                    onChange={e => updateArg(i, 'label', e.target.value)}
+                    placeholder="Label"
+                    title="Argument label"
+                  />
+                  <select
+                    className="arg-type-select"
+                    value={arg.type}
+                    onChange={e => updateArg(i, 'type', e.target.value)}
+                    title="Argument type"
+                  >
+                    <option value="file">📁 File</option>
+                    <option value="value"># Value</option>
+                  </select>
+                  {arg.type === 'file' ? (
+                    <div className="arg-file-row">
+                      <span className="arg-file-name" title={arg.value || ''}>
+                        {arg.value ? arg.value.split(/[\\/]/).pop() : <span className="arg-placeholder">No file selected</span>}
+                      </span>
+                      <button className="arg-browse-btn" onClick={() => handlePickArgFile(i)}>Browse…</button>
+                      {arg.value && <button className="arg-clear-btn" onClick={() => updateArg(i, 'value', '')}>✕</button>}
+                    </div>
+                  ) : (
+                    <input
+                      className="arg-value-input"
+                      value={arg.value || ''}
+                      onChange={e => updateArg(i, 'value', e.target.value)}
+                      placeholder={arg.hint || 'Enter value…'}
+                      title={arg.hint || ''}
+                    />
+                  )}
+                  <button
+                    className="arg-required-btn"
+                    title={arg.required ? 'Required — click to make optional' : 'Optional — click to make required'}
+                    onClick={() => updateArg(i, 'required', !arg.required)}
+                  >
+                    {arg.required ? '★' : '☆'}
+                  </button>
+                  <button className="arg-remove-btn" onClick={() => removeArg(i)} title="Remove">✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button className="inputs-add-btn" onClick={addArg}>+ Add argument</button>
+        </div>
+      )}
+
       {/* ── Find bar ── */}
       {showFind && (
         <div className="find-bar">
@@ -594,7 +776,18 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
               reader.onload = ev => { setCode(ev.target.result); setSaved(false); };
               reader.readAsText(file);
             } else {
-              setInputFile(file.path || file.name);
+              // Set dropped file as value of the first file-type arg, or add one if none exist
+              const filePath = file.path || file.name;
+              setScriptArgs(prev => {
+                const firstFileIdx = prev.findIndex(a => a.type === 'file');
+                if (firstFileIdx >= 0) {
+                  return prev.map((a, i) => i === firstFileIdx ? { ...a, value: filePath } : a);
+                }
+                // No file arg defined — add one at index 1 (or next available)
+                const maxIdx = prev.length > 0 ? Math.max(...prev.map(a => a.index)) : 0;
+                return [...prev, { index: maxIdx + 1, label: 'input file', type: 'file', hint: '', value: filePath, required: true }].sort((a, b) => a.index - b.index);
+              });
+              setShowInputsPanel(true);
             }
           }}
         >
@@ -790,8 +983,8 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
             <div className="modal-body">
               Your script saves output files using the input file's path as a base. Those files won't appear in the <strong>Output Files</strong> tab.<br /><br />
               Use a relative path instead — Pyxenia runs scripts with the output folder as the working directory:<br />
-              <code>output_file = "results.xlsx"</code><br />
-              or: <code>output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx"</code>
+              <code>output_file = "output.csv"</code><br />
+              or derive only the filename from input: <code>output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.csv"</code>
             </div>
             <div className="modal-actions">
               {onDebugWithAI && (
@@ -807,23 +1000,24 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         </div>
       )}
 
-      {/* Input file warning modal */}
-      {showInputWarning && (
-        <div className="modal-overlay" onClick={() => setShowInputWarning(false)}>
+      {/* Missing args modal */}
+      {showMissingArgsWarning && (
+        <div className="modal-overlay" onClick={() => setShowMissingArgsWarning(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-icon"><FileInput size={22} /></div>
-            <div className="modal-title">No input file selected</div>
+            <div className="modal-icon"><SlidersHorizontal size={22} /></div>
+            <div className="modal-title">Missing input values</div>
             <div className="modal-body">
-              Your script uses <code>sys.argv</code> but no input file is attached. The script may crash or produce unexpected results.
+              The following argument{missingArgLabels.length > 1 ? 's are' : ' is'} required but not set:
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                {missingArgLabels.map(l => (
+                  <code key={l} style={{ background: 'var(--bg4)', padding: '2px 8px', borderRadius: 4, fontSize: 12 }}>{l}</code>
+                ))}
+              </div>
             </div>
             <div className="modal-actions">
-              <button className="btn-primary" onClick={async () => {
-                setShowInputWarning(false);
-                const p = await api.pickInputFile();
-                if (p) { setInputFile(p); await doRun(p); }
-              }}>Select a file</button>
-              <button className="btn-ghost" onClick={() => { setShowInputWarning(false); doRun(); }}>Run anyway</button>
-              <button className="btn-ghost" onClick={() => setShowInputWarning(false)}>Cancel</button>
+              <button className="btn-primary" onClick={() => { setShowMissingArgsWarning(false); setShowInputsPanel(true); }}>Set values</button>
+              <button className="btn-ghost" onClick={() => { setShowMissingArgsWarning(false); doRun(); }}>Run anyway</button>
+              <button className="btn-ghost" onClick={() => setShowMissingArgsWarning(false)}>Cancel</button>
             </div>
           </div>
         </div>

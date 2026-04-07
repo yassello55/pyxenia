@@ -84,7 +84,7 @@ function geminiTools() {
 // ─── System prompt builder ────────────────────────────────────────────────────
 
 function buildSystemPrompt(context, provider) {
-  const { projects = [], activeProject = null, activeScript = null, inputFilePath = null } = context;
+  const { projects = [], activeProject = null, activeScript = null, scriptArgs = [] } = context;
 
   const isGlobalChat = !activeProject;
 
@@ -126,24 +126,37 @@ This means:
 ## SELF-CONTAINED SCRIPTS
 When a user asks for a script they can "run right now" or a "test script" with no other context, write something fun and instantly runnable that requires NO external files, NO third-party packages, and NO user interaction. Use only Python stdlib. Good examples: a prime number finder, a Fibonacci generator, a password strength checker on hardcoded examples, a simple stats calculator on generated random data, a word frequency counter on hardcoded text, a Caesar cipher encoder. State that it uses only stdlib and runs without any input.
 
-## INPUT FILE CONVENTION — CRITICAL
-\`sys.argv[1]\` is ONLY for scripts that need the user to **supply an external data file** (CSV, Excel, JSON, image, etc.) via the "Input file" selector in the UI.
+## SCRIPT ARGUMENTS CONVENTION — CRITICAL
+Pyxenia has an **Inputs panel** in the toolbar where users set values for each sys.argv argument before running. Each argument can be a **file path** (the user picks a file) or a **plain value** (the user types a string or number).
 
-ONLY use this pattern when the script genuinely needs to READ a user-supplied file:
+### Declaring arguments — ALWAYS add this block at the very top of any script that uses sys.argv:
+\`\`\`python
+# args:
+#   1: input_file (file) - CSV file to process
+#   2: threshold (value) - Minimum score e.g. 0.8
+#   3: output_name (value) - Output filename e.g. results.csv
+\`\`\`
+
+Format per line: #   <index>: <variable_name> (file|value) - <hint shown as placeholder>
+- file → user picks a file path via a file picker
+- value → user types any text/number value
+- The hint after - appears as placeholder text in the input field
+
+### Using the arguments in code:
 \`\`\`python
 import sys, os
 
-if len(sys.argv) < 2:
-    print("Error: no input file selected. Use the 'Input file' selector in Pyxenia before running.")
-    sys.exit(1)
-
-input_file = sys.argv[1]
+input_file = sys.argv[1]        # file arg — receives the full path chosen by the user
+threshold = float(sys.argv[2])  # value arg — convert to the expected type
+output_name = sys.argv[3]       # value arg
 \`\`\`
 
-If a script fetches data from an API, generates data internally, or has no external file dependency — do NOT add sys.argv at all. Adding it forces the user to select an unnecessary file.
-
-NEVER hardcode file paths like 'data.csv', 'input.xlsx', or os.path.join(...).
-After showing code that uses sys.argv[1], remind the user: "Select your file using the **Input file** button in the toolbar before running."
+### Rules:
+- ONLY add sys.argv arguments when the script genuinely needs external input
+- If a script fetches from an API, generates data internally, or has no external dependency — do NOT add sys.argv at all
+- Always wrap value args with the appropriate conversion: int(), float(), etc.
+- After showing a script with args, always remind the user: "Set the values in the **Inputs panel** (toolbar) before running."
+- NEVER hardcode file paths like 'data.csv' or 'input.xlsx'
 
 ## OUTPUT FILE CONVENTION — CRITICAL
 Pyxenia runs each script with its **working directory (cwd) set to the script's dedicated output folder**. Files saved there appear in the **Output Files** tab. Files saved anywhere else will NOT appear in the app.
@@ -197,8 +210,12 @@ output_file = os.path.splitext(os.path.basename(input_file))[0] + "_results.xlsx
     if (activeScript) {
       system += `\nOpen script: "${sanitizeContext(activeScript.name)}" (id: ${sanitizeContext(activeScript.id)}) — this is what the user is currently working on.`;
     }
-    if (inputFilePath) {
-      system += `\nInput file selected: ${sanitizeContext(inputFilePath)} (accessible in the script via sys.argv[1])`;
+    if (scriptArgs && scriptArgs.length > 0) {
+      system += '\nScript arguments configured in the Inputs panel:';
+      scriptArgs.forEach(a => {
+        const val = a.value ? `"${sanitizeContext(String(a.value))}"` : '(not set)';
+        system += `\n  sys.argv[${a.index}] — ${sanitizeContext(a.label)} (${a.type}) = ${val}`;
+      });
     }
     system += '\n';
   }
