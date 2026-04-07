@@ -232,6 +232,18 @@
   border-radius: 0;
 }
 
+/* Status confirmation lines (✅ Done, ❌ Error, ⚠️ Warning) */
+.chat-status-line {
+  display: block;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 /* Streaming cursor */
 .stream-cursor {
   display: inline-block;

@@ -53,6 +53,26 @@ function renderContent(text) {
   return parts;
 }
 
+// Splits message content so that lines starting with ✅/❌/⚠️ render as
+// their own distinct pill rather than being buried inside a paragraph.
+function renderMessageContent(text) {
+  if (!text) return null;
+  // Split on lines that start with a status emoji (after optional blank lines)
+  const segments = text.split(/(?=\n\s*\n(?:✅|❌|⚠️)|\n(?:✅|❌|⚠️))/);
+  if (segments.length <= 1) return renderContent(text);
+  return segments.map((seg, i) => {
+    const trimmed = seg.replace(/^\n+/, '');
+    if (/^(✅|❌|⚠️)/.test(trimmed)) {
+      return (
+        <div key={i} className="chat-status-line">
+          {renderContent(trimmed)}
+        </div>
+      );
+    }
+    return <React.Fragment key={i}>{renderContent(seg)}</React.Fragment>;
+  });
+}
+
 function InlineText({ text }) {
   // Render inline `code` and **bold**
   const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
@@ -128,7 +148,7 @@ function MessageBubble({ msg }) {
           {msg.error
             ? msg.error
             : <>
-                {renderContent(msg.content)}
+                {renderMessageContent(msg.content)}
                 {msg.streaming && !msg.content && <span style={{ color: 'var(--text3)' }}>Thinking…</span>}
                 {msg.streaming && <span className="stream-cursor" />}
               </>
