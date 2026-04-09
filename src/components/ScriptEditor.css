@@ -150,6 +150,7 @@
 
 .toolbar-btn:hover { background: var(--bg4); color: var(--text); border-color: var(--border2); }
 .toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.toolbar-btn.icon-only { padding: 5px 7px; gap: 0; }
 .toolbar-btn.danger { color: var(--red); border-color: var(--red-bg); }
 .toolbar-btn.danger:hover { background: var(--red-bg); }
 .toolbar-btn.run {

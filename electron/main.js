@@ -681,40 +681,62 @@ ipcMain.handle('uninstall-package', (_, { projectId, packageName }) => {
 
 // Maps Python import name → pip install name for packages where they differ
 const IMPORT_TO_PIP = {
+  // Computer vision / image
   fitz: 'pymupdf',
   cv2: 'opencv-python',
   PIL: 'Pillow',
-  sklearn: 'scikit-learn',
-  bs4: 'beautifulsoup4',
-  yaml: 'pyyaml',
-  serial: 'pyserial',
-  usb: 'pyusb',
-  Crypto: 'pycryptodome',
-  OpenSSL: 'pyOpenSSL',
-  gi: 'PyGObject',
-  wx: 'wxPython',
-  dateutil: 'python-dateutil',
-  dotenv: 'python-dotenv',
-  magic: 'python-magic',
-  docx: 'python-docx',
-  pptx: 'python-pptx',
-  discord: 'discord.py',
-  jwt: 'PyJWT',
-  apscheduler: 'APScheduler',
-  pkg_resources: 'setuptools',
   skimage: 'scikit-image',
-  attr: 'attrs',
-  boto3: 'boto3',
+  // Data / ML
+  sklearn: 'scikit-learn',
+  // Web / scraping
+  bs4: 'beautifulsoup4',
   googlesearch: 'googlesearch-python',
   fake_useragent: 'fake-useragent',
-  bs4: 'beautifulsoup4',
-  lxml: 'lxml',
+  // Config / serialisation
+  yaml: 'pyyaml',
+  dotenv: 'python-dotenv',
+  magic: 'python-magic',
+  // Office documents
+  docx: 'python-docx',
+  pptx: 'python-pptx',
+  // Hardware / OS
+  serial: 'pyserial',
+  usb: 'pyusb',
+  // Crypto
+  Crypto: 'pycryptodome',
+  Cryptodome: 'pycryptodome',
+  OpenSSL: 'pyOpenSSL',
+  nacl: 'PyNaCl',
+  // GUI / system
+  gi: 'PyGObject',
+  wx: 'wxPython',
+  // Database
+  psycopg2: 'psycopg2-binary',
+  pymysql: 'PyMySQL',
+  // Dates / time
+  dateutil: 'python-dateutil',
+  // Google APIs
+  googleapiclient: 'google-api-python-client',
+  google_auth_oauthlib: 'google-auth-oauthlib',
+  // Messaging / social
+  discord: 'discord.py',
+  telegram: 'python-telegram-bot',
+  // Auth / API
+  jwt: 'PyJWT',
+  // Task scheduling
+  apscheduler: 'APScheduler',
+  // Utilities
+  pkg_resources: 'setuptools',
+  attr: 'attrs',
+  // Web frameworks
   werkzeug: 'Werkzeug',
   flask: 'Flask',
   django: 'Django',
   sqlalchemy: 'SQLAlchemy',
   aiohttp: 'aiohttp',
   httpx: 'httpx',
+  // Cloud
+  boto3: 'boto3',
 };
 
 // Parse the # args: block from a Python script and return arg definitions
@@ -756,6 +778,18 @@ ipcMain.handle('detect-imports', (_, code) => {
     'decimal','fractions','statistics','cmath','array','queue','heapq','bisect',
     'pprint','__future__','builtins','site','platform','textwrap','unicodedata',
     'codecs','locale','gettext','calendar','uuid','secrets','hmac','difflib',
+    // Networking / email stdlib (commonly mistaken for third-party)
+    'smtplib','imaplib','poplib','ftplib','ssl','select','asyncio','socketserver',
+    'xmlrpc','mimetypes','mailbox','nntplib','telnetlib',
+    // Concurrency / OS
+    'multiprocessing','concurrent','signal','mmap','ctypes','threading',
+    // Utilities
+    'configparser','importlib','pkgutil','operator','types','runpy',
+    'timeit','profile','tracemalloc','readline','rlcompleter','sysconfig',
+    'token','tokenize','keyword','symtable','compileall','py_compile',
+    'numbers','cProfile','faulthandler','msvcrt','winreg','winsound',
+    // GUI stdlib (tkinter is built-in, not a pip package)
+    'tkinter','turtle','_tkinter',
   ]);
 
   for (const line of lines) {

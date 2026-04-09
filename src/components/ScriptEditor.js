@@ -307,8 +307,9 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
       // scripts may catch exceptions internally and still exit with code 0)
       const allText = currentOutputRef.current.map(l => l.text).join('');
       const missing = new Set();
-      // ModuleNotFoundError / ImportError: No module named 'xxx'
-      for (const m of allText.matchAll(/(?:ModuleNotFoundError|ImportError)[^\n]*'([^']+)'/g))
+      // ModuleNotFoundError: No module named 'xxx'
+      // ImportError: No module named 'xxx'  (but NOT "cannot import name" — that's wrong API usage)
+      for (const m of allText.matchAll(/(?:ModuleNotFoundError|ImportError): No module named '([^']+)'/g))
         missing.add(m[1].split('.')[0]);
       // BeautifulSoup FeatureNotFound: features you requested: lxml
       for (const m of allText.matchAll(/features you requested:\s*([\w][\w-]*)/g))
@@ -350,8 +351,10 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
 
       // ✅ Refresh installed list synchronously so UI updates in same pass
       if (exitCode === 0) {
+        invalidatePkgCache(); // force re-check on next Run
         window.pyxenia.listPackages(project.id).then(list => {
           const names = new Set((list || []).map(p => p.name.toLowerCase()));
+          installedPkgsCacheRef.current = names; // warm cache with fresh data
           setInstalledPkgs([...names]);
           setMissingPkgs(prev => prev.filter(p => !names.has(p.toLowerCase())));
         });
@@ -438,6 +441,37 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     }
   };
 
+  // Step 0: check for missing packages before running
+  const [showPreRunDepsWarning, setShowPreRunDepsWarning] = useState(false);
+  const [preRunMissingPkgs, setPreRunMissingPkgs] = useState([]);
+  // Cache installed packages so we don't call `pip list` on every single Run click
+  const installedPkgsCacheRef = useRef(null); // null = not loaded yet
+
+  const getInstalledPackages = async () => {
+    if (installedPkgsCacheRef.current) return installedPkgsCacheRef.current;
+    const list = await api.listPackages(project.id);
+    const names = new Set((list || []).map(p => p.name.toLowerCase()));
+    installedPkgsCacheRef.current = names;
+    return names;
+  };
+
+  // Invalidate cache whenever packages are installed or uninstalled
+  const invalidatePkgCache = () => { installedPkgsCacheRef.current = null; };
+
+  const checkDepsAndRun = async () => {
+    const [detected, installedNames] = await Promise.all([
+      api.detectImports(code),
+      getInstalledPackages(),
+    ]);
+    const missing = detected.filter(p => !installedNames.has(p.toLowerCase()));
+    if (missing.length > 0) {
+      setPreRunMissingPkgs(missing);
+      setShowPreRunDepsWarning(true);
+    } else {
+      handleRun();
+    }
+  };
+
   // Step 1: check if output files will be saved outside the app folder
   const handleRun = () => {
     // Risky: input file's *directory* is used as the output location
@@ -458,6 +492,16 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   };
 
   const handleStop = () => { api.stopScript(script.id); setRunning(false); onRunningChange?.(false, null); };
+
+  const handleDownload = () => {
+    const blob = new Blob([code], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = script.name.endsWith('.py') ? script.name : `${script.name}.py`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleDetect = async () => {
     setDetecting(true);
@@ -488,7 +532,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   };
 
   useKeyboardShortcuts([
-    { key: 'Enter', ctrl: true, action: () => { if (!running && project.envReady) handleRun(); }, allowInInput: true },
+    { key: 'Enter', ctrl: true, action: () => { if (!running && project.envReady) checkDepsAndRun(); }, allowInInput: true },
     { key: 'k',     ctrl: true, action: () => setOutput([]),                                       allowInInput: false },
     { key: 'h',     ctrl: true, action: () => setShowHistory(p => !p),                            allowInInput: false },
     { key: 'f',     ctrl: true, action: () => { setShowFind(true); setTimeout(() => findInputRef.current?.focus(), 50); }, allowInInput: true },
@@ -585,22 +629,25 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
               : <><Search size={14} /> Auto-detect</>}
           </button>
           <button
-            className={`toolbar-btn ${showHistory ? 'active' : ''}`}
+            className={`toolbar-btn icon-only ${showHistory ? 'active' : ''}`}
             onClick={() => setShowHistory(p => !p)}
             title="Run history (Ctrl+H)"
           >
-            <History size={14} /> History
+            <History size={14} />
             {runHistory.length > 0 && <span className="history-count">{runHistory.length}</span>}
           </button>
-          <button className="toolbar-btn" onClick={handleSave} title="Save (Ctrl+S)" disabled={saved}>
-            <Save size={14} /> {saved ? 'Saved' : 'Save'}
+          <button className="toolbar-btn icon-only" onClick={handleDownload} title="Download .py file">
+            <Download size={14} />
+          </button>
+          <button className="toolbar-btn icon-only" onClick={handleSave} title="Save (Ctrl+S)" disabled={saved}>
+            <Save size={14} />
           </button>
           {running ? (
             <button className="toolbar-btn danger" onClick={handleStop}>
               <Square size={14} /> Stop
             </button>
           ) : (
-            <button className="toolbar-btn run" onClick={handleRun} disabled={!project.envReady}>
+            <button className="toolbar-btn run" onClick={checkDepsAndRun} disabled={!project.envReady}>
               <Play size={14} fill="currentColor" /> Run
             </button>
           )}
@@ -939,6 +986,38 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
         </div>
 
       </div>{/* end split-container */}
+
+      {/* Pre-run missing packages modal */}
+      {showPreRunDepsWarning && (
+        <div className="modal-overlay" onClick={() => setShowPreRunDepsWarning(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-icon" style={{ color: 'var(--red)' }}><Package size={22} /></div>
+            <div className="modal-title">Missing packages</div>
+            <div className="modal-body">
+              Your script requires the following package{preRunMissingPkgs.length > 1 ? 's' : ''} that {preRunMissingPkgs.length > 1 ? 'are' : 'is'} not installed:
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }}>
+                {preRunMissingPkgs.map(n => (
+                  <code key={n} style={{ background: 'var(--bg4)', padding: '2px 8px', borderRadius: 4, fontSize: 12, color: 'var(--accent2)' }}>{n}</code>
+                ))}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={async () => {
+                setShowPreRunDepsWarning(false);
+                setShowInstallPanel(true);
+                setInstallLog([]);
+                const installed = await api.listPackages(project.id);
+                const installedNames = new Set((installed || []).map(p => p.name.toLowerCase()));
+                setInstalledPkgs([...installedNames]);
+                setDetectedPkgs(preRunMissingPkgs);
+                setMissingPkgs(preRunMissingPkgs.filter(p => !installedNames.has(p.toLowerCase())));
+              }}>Install</button>
+              <button className="btn-ghost" onClick={() => { setShowPreRunDepsWarning(false); handleRun(); }}>Run anyway</button>
+              <button className="btn-ghost" onClick={() => setShowPreRunDepsWarning(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Missing dependencies modal */}
       {showMissingDepsWarning && (
