@@ -80,7 +80,7 @@ const formatSize = (bytes) => {
 
 // ─── Smart error summarizer ───────────────────────────────────────────────────
 function summarizeConsoleErrors(output) {
-  const text = output.map(o => o.data).join('');
+  const text = output.map(o => o.text ?? o.data ?? '').join('');
   const lines = text.split('\n');
 
   // Find the last Traceback block
@@ -127,6 +127,13 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
   const [showInputsPanel, setShowInputsPanel] = useState(false);
   const [showMissingArgsWarning, setShowMissingArgsWarning] = useState(false);
   const [missingArgLabels, setMissingArgLabels] = useState([]);
+
+  // File picker modal (From PC / From project outputs)
+  const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [filePickerArgIdx, setFilePickerArgIdx] = useState(null);
+  const [filePickerTab, setFilePickerTab] = useState('outputs'); // 'pc' | 'outputs'
+  const [projectOutputs, setProjectOutputs] = useState({}); // { scriptId: { name, files[] } }
+  const [projectOutputsLoading, setProjectOutputsLoading] = useState(false);
 
   // Install panel
   const [detectedPkgs, setDetectedPkgs] = useState([]);
@@ -408,9 +415,32 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
     return [...prev, { index: maxIdx + 1, label: `arg ${maxIdx + 1}`, type: 'value', hint: '', value: '', required: false }];
   });
 
-  const handlePickArgFile = async (i) => {
+  const openFilePicker = async (i) => {
+    setFilePickerArgIdx(i);
+    setFilePickerTab('outputs');
+    setFilePickerOpen(true);
+    // Load output files for all scripts in parallel
+    setProjectOutputsLoading(true);
+    const entries = await Promise.all(
+      (project.scripts || []).map(async s => {
+        const files = await api.listScriptFiles({ projectId: project.id, scriptId: s.id });
+        return [s.id, { name: s.name, files: files || [] }];
+      })
+    );
+    setProjectOutputs(Object.fromEntries(entries));
+    setProjectOutputsLoading(false);
+  };
+
+  const handleFilePickerSelect = (filePath) => {
+    if (filePickerArgIdx !== null) updateArg(filePickerArgIdx, 'value', filePath);
+    setFilePickerOpen(false);
+    setFilePickerArgIdx(null);
+  };
+
+  const handlePickFromPC = async () => {
     const p = await api.pickInputFile();
-    if (p) updateArg(i, 'value', p);
+    if (p) handleFilePickerSelect(p);
+    else setFilePickerOpen(false);
   };
 
   const doRun = async () => {
@@ -751,7 +781,7 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
                       <span className="arg-file-name" title={arg.value || ''}>
                         {arg.value ? arg.value.split(/[\\/]/).pop() : <span className="arg-placeholder">No file selected</span>}
                       </span>
-                      <button className="arg-browse-btn" onClick={() => handlePickArgFile(i)}>Browse…</button>
+                      <button className="arg-browse-btn" onClick={() => openFilePicker(i)}>Browse…</button>
                       {arg.value && <button className="arg-clear-btn" onClick={() => updateArg(i, 'value', '')}>✕</button>}
                     </div>
                   ) : (
@@ -1074,6 +1104,76 @@ export default function ScriptEditor({ script, project, onSave, showChat, onTogg
               )}
               <button className="btn-ghost" onClick={() => { setShowOutputWarning(false); proceedToInputCheck(); }}>Run anyway</button>
               <button className="btn-ghost" onClick={() => setShowOutputWarning(false)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── File picker modal ── */}
+      {filePickerOpen && (
+        <div className="modal-overlay" onClick={() => setFilePickerOpen(false)}>
+          <div className="file-picker-modal" onClick={e => e.stopPropagation()}>
+            <div className="file-picker-header">
+              <span className="file-picker-title">Choose input file</span>
+              <button className="icon-btn" onClick={() => setFilePickerOpen(false)}>✕</button>
+            </div>
+            <div className="file-picker-tabs">
+              <button
+                className={`file-picker-tab ${filePickerTab === 'outputs' ? 'active' : ''}`}
+                onClick={() => setFilePickerTab('outputs')}
+              >
+                <Files size={13} /> Project outputs
+              </button>
+              <button
+                className={`file-picker-tab ${filePickerTab === 'pc' ? 'active' : ''}`}
+                onClick={() => { setFilePickerTab('pc'); handlePickFromPC(); }}
+              >
+                <FolderOpen size={13} /> From your PC
+              </button>
+            </div>
+            <div className="file-picker-body">
+              {filePickerTab === 'outputs' && (
+                projectOutputsLoading ? (
+                  <div className="file-picker-loading"><Loader size={14} className="spin" /> Loading output files…</div>
+                ) : (
+                  <div className="file-picker-scripts">
+                    {(project.scripts || []).length === 0 && (
+                      <div className="file-picker-empty">No scripts in this project yet.</div>
+                    )}
+                    {(project.scripts || []).map(s => {
+                      const entry = projectOutputs[s.id];
+                      const files = entry?.files || [];
+                      return (
+                        <div key={s.id} className="file-picker-script">
+                          <div className="file-picker-script-name">
+                            <FileInput size={12} /> {s.name}
+                          </div>
+                          {files.length === 0 ? (
+                            <div className="file-picker-no-files">No output files yet</div>
+                          ) : (
+                            files.map(f => (
+                              <div key={f.path} className="file-picker-file">
+                                <div className="file-picker-file-info">
+                                  <span className="file-picker-file-name">{f.name}</span>
+                                  <span className="file-picker-file-meta">
+                                    {formatSize(f.size)} · {new Date(f.mtime).toLocaleString()}
+                                  </span>
+                                </div>
+                                <button
+                                  className="file-picker-select-btn"
+                                  onClick={() => handleFilePickerSelect(f.path)}
+                                >
+                                  Select
+                                </button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
             </div>
           </div>
         </div>
