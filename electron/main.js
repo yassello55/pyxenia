@@ -1015,3 +1015,134 @@ ipcMain.handle('llm:abort', (_, chatId) => {
   }
   return true;
 });
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+const TEMPLATES_DIR = path.join(__dirname, 'templates');
+
+ipcMain.handle('get-templates', () => {
+  if (!fs.existsSync(TEMPLATES_DIR)) return [];
+  return fs.readdirSync(TEMPLATES_DIR).flatMap(id => {
+    const templateDir = path.join(TEMPLATES_DIR, id);
+    const metaPath = path.join(templateDir, 'meta.json');
+    if (!fs.existsSync(metaPath)) return [];
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      // Find sample file: try exact name first, then any xlsx/xls in folder
+      let sampleFilePath = null;
+      let sampleFileLabel = meta.sampleFileLabel || meta.sampleFile || null;
+      if (meta.sampleFile) {
+        const exact = path.join(templateDir, meta.sampleFile);
+        if (fs.existsSync(exact)) {
+          sampleFilePath = exact;
+        } else {
+          const fallback = fs.readdirSync(templateDir).find(f => /\.(xlsx|xls)$/i.test(f));
+          if (fallback) { sampleFilePath = path.join(templateDir, fallback); sampleFileLabel = fallback; }
+        }
+      }
+      return [{ ...meta, id, sampleFilePath, sampleFileLabel }];
+    } catch { return []; }
+  });
+});
+
+ipcMain.handle('install-template', async (_, { templateId }) => {
+  const templateDir = path.join(TEMPLATES_DIR, templateId);
+  const metaPath = path.join(templateDir, 'meta.json');
+  if (!fs.existsSync(metaPath)) return null;
+
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  const safeName = meta.name.replace(/[<>:"|?*\x00-\x1f]/g, '').trim().slice(0, 100);
+
+  const id = `proj_${Date.now()}`;
+  const projectDir = path.join(PROJECTS_DIR, id);
+  const scriptsDir = path.join(projectDir, 'scripts');
+  const envDir = path.join(projectDir, 'env');
+  const inputsDir = path.join(projectDir, 'inputs');
+
+  fs.mkdirSync(scriptsDir, { recursive: true });
+  fs.mkdirSync(inputsDir, { recursive: true });
+
+  // Copy script
+  const scriptSrc = path.join(templateDir, 'script.py');
+  const sid = `script_${Date.now()}`;
+  const scriptDest = path.join(scriptsDir, `${sid}.py`);
+  fs.copyFileSync(scriptSrc, scriptDest);
+
+  // Copy sample file if present
+  let sampleDestPath = null;
+  if (meta.sampleFile) {
+    const sampleSrc = path.join(templateDir, meta.sampleFile);
+    if (fs.existsSync(sampleSrc)) {
+      sampleDestPath = path.join(inputsDir, meta.sampleFile);
+      fs.copyFileSync(sampleSrc, sampleDestPath);
+    }
+  }
+
+  const script = {
+    id: sid,
+    name: `${safeName}.py`,
+    filePath: scriptDest,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const project = {
+    id,
+    name: safeName,
+    description: meta.description,
+    createdAt: new Date().toISOString(),
+    scripts: [script],
+    envReady: false,
+    envError: null,
+    projectDir,
+  };
+
+  const projects = loadProjects();
+  projects.push(project);
+  saveProjects(projects);
+
+  createVenv(id, projectDir, envDir);
+
+  // Pre-fill args: file args get the copied sample path
+  const scriptArgs = (meta.args || []).map(a => ({
+    ...a,
+    value: a.type === 'file' && sampleDestPath ? sampleDestPath : '',
+    required: true,
+  }));
+
+  return { project, scriptArgs };
+});
+
+ipcMain.handle('open-external-url', (_, url) => {
+  if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+    shell.openExternal(url);
+  }
+});
+
+ipcMain.handle('download-template-sample', async (_, { templateId }) => {
+  const templateDir = path.join(TEMPLATES_DIR, templateId);
+  const metaPath = path.join(templateDir, 'meta.json');
+  if (!fs.existsSync(metaPath)) return false;
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+  // Find sample: exact name or first xlsx fallback
+  let sampleSrc = meta.sampleFile ? path.join(templateDir, meta.sampleFile) : null;
+  if (!sampleSrc || !fs.existsSync(sampleSrc)) {
+    const fallback = fs.readdirSync(templateDir).find(f => /\.(xlsx|xls)$/i.test(f));
+    if (!fallback) return false;
+    sampleSrc = path.join(templateDir, fallback);
+    meta.sampleFileLabel = fallback;
+  }
+  if (!fs.existsSync(sampleSrc)) return false;
+
+  const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: meta.sampleFileLabel || meta.sampleFile,
+    filters: [
+      { name: 'Excel Files', extensions: ['xlsx', 'xls'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (canceled || !filePath) return false;
+  fs.copyFileSync(sampleSrc, filePath);
+  shell.showItemInFolder(filePath);
+  return true;
+});

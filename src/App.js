@@ -5,6 +5,7 @@ import WelcomeScreen from './components/WelcomeScreen';
 import SettingsPanel from './components/SettingsPanel';
 import AboutModal from './components/AboutModal';
 import ChatPanel from './components/ChatPanel';
+import TemplatesPage from './components/TemplatesPage';
 import { useSettings } from './hooks/useSettings';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import './App.css';
@@ -18,6 +19,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatWidth, setChatWidth] = useState(400);
   const [activeScriptCtx, setActiveScriptCtx] = useState(null); // { script, project, code, scriptArgs }
@@ -140,7 +142,7 @@ export default function App() {
           projects={projects}
           categories={categories}
           activeProjectId={activeProjectId}
-          onSelect={setActiveProjectId}
+          onSelect={(id) => { setActiveProjectId(id); setShowTemplates(false); setShowChat(false); }}
           onCreateProject={handleCreateProject}
           onDeleteProject={handleDeleteProject}
           onRenameProject={handleRenameProject}
@@ -150,7 +152,9 @@ export default function App() {
           onMoveProject={handleMoveProject}
           onOpenSettings={() => setShowSettings(true)}
           onOpenAbout={() => setShowAbout(true)}
-          onNewChat={() => { setActiveProjectId(null); setShowChat(true); }}
+          onNewChat={() => { setActiveProjectId(null); setShowTemplates(false); setShowChat(true); }}
+          onOpenTemplates={() => { setActiveProjectId(null); setShowChat(false); setShowTemplates(true); }}
+          activePage={!activeProject && showChat ? 'chat' : !activeProject && showTemplates ? 'templates' : null}
         />
         <main className={`app-main ${showChat && activeProject ? 'app-main--split' : ''}`}>
           {/* When chat is open with no active project → full-page chat */}
@@ -162,6 +166,14 @@ export default function App() {
               debugMessage={debugMessage}
               onDebugMessageUsed={() => setDebugMessage(null)}
               onOpenSettings={() => setShowSettings(true)}
+            />
+          ) : showTemplates && !activeProject ? (
+            <TemplatesPage
+              onInstalled={(project) => {
+                setProjects(prev => [...prev, project]);
+                setShowTemplates(false);
+                setActiveProjectId(project.id);
+              }}
             />
           ) : (
             <>

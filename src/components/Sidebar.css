@@ -54,6 +54,7 @@
 
 .sidebar-nav-btn:hover:not(:disabled) { background: var(--bg3); color: var(--text); }
 .sidebar-nav-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.sidebar-nav-btn.active { background: var(--bg3); color: var(--accent); }
 
 .sidebar-search {
   display: flex;

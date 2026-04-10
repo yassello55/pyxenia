@@ -1,0 +1,12 @@
+{
+  "id": "multi-site-scraper",
+  "name": "Multi-Site Web Scraper to Excel",
+  "description": "Reads a list of URLs from an Excel file, scrapes each site for key data, and exports all results into a structured Excel report.",
+  "tags": ["Web Scraping", "Excel", "Automation"],
+  "packages": ["requests", "beautifulsoup4", "pandas", "openpyxl"],
+  "args": [
+    { "index": 1, "label": "sites list", "type": "file", "hint": "Excel file with URLs to scrape (.xlsx)" }
+  ],
+  "sampleFile": "websites_input_template.xlsx",
+  "sampleFileLabel": "websites_input_template.xlsx"
+}

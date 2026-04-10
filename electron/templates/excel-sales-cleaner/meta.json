@@ -1,0 +1,12 @@
+{
+  "id": "excel-sales-cleaner",
+  "name": "Excel Sales Data Cleaner",
+  "description": "Cleans and normalizes raw sales data from an Excel file — removes duplicates, fixes date formatting, fills missing values, and exports a clean ready-to-use version.",
+  "tags": ["Excel", "Data Cleaning", "Sales"],
+  "packages": ["pandas", "openpyxl"],
+  "args": [
+    { "index": 1, "label": "input file", "type": "file", "hint": "Raw sales Excel file (.xlsx)" }
+  ],
+  "sampleFile": "sales_data_messy.xlsx",
+  "sampleFileLabel": "sales_data_messy.xlsx"
+}

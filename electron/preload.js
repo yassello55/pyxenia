@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld('pyxenia', {
   // Chat file attachment
   pickChatAttachment: () => ipcRenderer.invoke('pick-chat-attachment'),
 
+  // Templates
+  getTemplates:           ()             => ipcRenderer.invoke('get-templates'),
+  installTemplate:        (data)         => ipcRenderer.invoke('install-template', data),
+  downloadTemplateSample: (data)         => ipcRenderer.invoke('download-template-sample', data),
+  openExternalUrl:        (url)          => ipcRenderer.invoke('open-external-url', url),
+
   // LLM Chat
   llmSend:  (data) => ipcRenderer.invoke('llm:send', data),
   llmAbort: (chatId) => ipcRenderer.invoke('llm:abort', chatId),

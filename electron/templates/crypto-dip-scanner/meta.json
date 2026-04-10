@@ -1,0 +1,10 @@
+{
+  "id": "crypto-dip-scanner",
+  "name": "Crypto Dip Accumulation Scanner",
+  "description": "Fetches live crypto prices and scans for dip opportunities based on configurable thresholds — outputs a ranked list of coins currently in accumulation zones.",
+  "tags": ["Crypto", "Finance", "API"],
+  "packages": ["requests", "pandas", "openpyxl"],
+  "args": [],
+  "sampleFile": null,
+  "sampleFileLabel": null
+}

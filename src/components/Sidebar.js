@@ -11,7 +11,7 @@ export default function Sidebar({
   projects, categories, activeProjectId,
   onSelect, onCreateProject, onDeleteProject, onRenameProject,
   onCreateCategory, onRenameCategory, onDeleteCategory, onMoveProject,
-  onOpenSettings, onOpenAbout, onNewChat,
+  onOpenSettings, onOpenAbout, onNewChat, onOpenTemplates, activePage,
 }) {
   const { settings, updateSettings } = useContext(SettingsContext);
   const toggleTheme = () => updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' });
@@ -74,11 +74,11 @@ export default function Sidebar({
       </div>
 
       <nav className="sidebar-nav">
-        <button className="sidebar-nav-btn" title="New Chat" onClick={onNewChat}>
+        <button className={`sidebar-nav-btn ${activePage === 'chat' ? 'active' : ''}`} title="New Chat" onClick={onNewChat}>
           <MessageSquare size={15} />
           <span>New Chat</span>
         </button>
-        <button className="sidebar-nav-btn" title="Templates" disabled>
+        <button className={`sidebar-nav-btn ${activePage === 'templates' ? 'active' : ''}`} title="Templates" onClick={onOpenTemplates}>
           <LayoutTemplate size={15} />
           <span>Templates</span>
         </button>
